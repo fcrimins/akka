@@ -176,7 +176,7 @@ class ClusterShardingSpec extends ActorTestKit with TypedAkkaSpecWithShutdown {
       Behaviors.same
   }
 
-  private val shardingRef1: ActorRef[ShardingEnvelope[TestProtocol]] = sharding.spawn2(
+  private val shardingRef1: ActorRef[ShardingEnvelope[TestProtocol]] = sharding.spawn(
     (shard, _) ⇒ behavior(shard),
     Props.empty,
     typeKey,
@@ -184,7 +184,7 @@ class ClusterShardingSpec extends ActorTestKit with TypedAkkaSpecWithShutdown {
     10,
     StopPlz())
 
-  private val shardingRef2 = sharding2.spawn2(
+  private val shardingRef2 = sharding2.spawn(
     (shard, _) ⇒ behavior(shard),
     Props.empty,
     typeKey,
@@ -192,7 +192,7 @@ class ClusterShardingSpec extends ActorTestKit with TypedAkkaSpecWithShutdown {
     10,
     StopPlz())
 
-  private val shardingRef3: ActorRef[IdTestProtocol] = sharding.spawnWithMessageExtractor2(
+  private val shardingRef3: ActorRef[IdTestProtocol] = sharding.spawnWithMessageExtractor(
     (shard, _) ⇒ behaviorWithId(shard),
     Props.empty,
     typeKey2,
@@ -204,7 +204,7 @@ class ClusterShardingSpec extends ActorTestKit with TypedAkkaSpecWithShutdown {
     },
     None)
 
-  private val shardingRef4 = sharding2.spawnWithMessageExtractor2(
+  private val shardingRef4 = sharding2.spawnWithMessageExtractor(
     (shard, _) ⇒ behaviorWithId(shard),
     Props.empty,
     typeKey2,
@@ -263,7 +263,7 @@ class ClusterShardingSpec extends ActorTestKit with TypedAkkaSpecWithShutdown {
       val p = TestProbe[String]()
       val typeKey3 = EntityTypeKey[TestProtocol]("passivate-test")
 
-      val shardingRef3: ActorRef[ShardingEnvelope[TestProtocol]] = sharding.spawn2(
+      val shardingRef3: ActorRef[ShardingEnvelope[TestProtocol]] = sharding.spawn(
         (shard, _) ⇒ behavior(shard, Some(stopProbe.ref)),
         Props.empty,
         typeKey3,
@@ -284,7 +284,7 @@ class ClusterShardingSpec extends ActorTestKit with TypedAkkaSpecWithShutdown {
     "fail if starting sharding for already used typeName, but with a different type" in {
       // sharding has been already started with EntityTypeKey[TestProtocol]("envelope-shard")
       val ex = intercept[Exception] {
-        sharding.spawn2(
+        sharding.spawn(
           (shard, _) ⇒ behaviorWithId(shard),
           Props.empty,
           EntityTypeKey[IdTestProtocol]("envelope-shard"),

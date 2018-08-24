@@ -31,8 +31,22 @@ object ClusterSharding extends ExtensionId[ClusterSharding] {
   override def createExtension(system: ActorSystem[_]): ClusterSharding =
     new ClusterShardingImpl(system)
 
+  /**
+   * When an entity is created an `ActorRef[ShardCommand]` is passed to the
+   * factory method. The entity can request passivation by sending the [[Passivate]]
+   * message to this ref. Sharding will then send back the specified
+   * `handOffStopMessage` message to the entity, which is then supposed to stop itself.
+   */
   trait ShardCommand
-  final case class Passivate[A](entity: ActorRef[A]) extends ShardCommand
+
+  /**
+   * The entity can request passivation by sending the [[Passivate]] message
+   * to the `ActorRef[ShardCommand]` that was passed in to the factory method
+   * when creating the entity. Sharding will then send back the specified
+   * `handOffStopMessage` message to the entity, which is then supposed to stop
+   * itself.
+   */
+  final case class Passivate[A](entity: ActorRef[A]) extends ShardCommand with javadsl.ClusterSharding.ShardCommand
 
 }
 
@@ -136,8 +150,9 @@ object ClusterSharding extends ExtensionId[ClusterSharding] {
  * the entity actors for example by defining receive timeout (`context.setReceiveTimeout`).
  * If a message is already enqueued to the entity when it stops itself the enqueued message
  * in the mailbox will be dropped. To support graceful passivation without losing such
- * messages the entity actor can send [[ShardRegion.Passivate]] to its parent `ShardRegion`.
- * The specified wrapped message in `Passivate` will be sent back to the entity, which is
+ * messages the entity actor can send [[ClusterSharding.Passivate]] to the `ActorRef[ShardCommand]`
+ * that was passed in to the factory method when creating the entity..
+ * The specified `handOffStopMessage` message will be sent back to the entity, which is
  * then supposed to stop itself. Incoming messages will be buffered by the `ShardRegion`
  * between reception of `Passivate` and termination of the entity. Such buffered messages
  * are thereafter delivered to a new incarnation of the entity.
@@ -165,14 +180,6 @@ trait ClusterSharding extends Extension { javadslSelf: javadsl.ClusterSharding �
    * @tparam A The type of command the entity accepts
    */
   def spawn[A](
-    behavior:           String ⇒ Behavior[A],
-    props:              Props,
-    typeKey:            EntityTypeKey[A],
-    settings:           ClusterShardingSettings,
-    maxNumberOfShards:  Int,
-    handOffStopMessage: A): ActorRef[ShardingEnvelope[A]]
-
-  def spawn2[A](
     behavior:           (ActorRef[ShardCommand], String) ⇒ Behavior[A],
     props:              Props,
     typeKey:            EntityTypeKey[A],
@@ -194,14 +201,6 @@ trait ClusterSharding extends Extension { javadslSelf: javadsl.ClusterSharding �
    * @tparam A The type of command the entity accepts
    */
   def spawnWithMessageExtractor[E, A](
-    behavior:           String ⇒ Behavior[A],
-    entityProps:        Props,
-    typeKey:            EntityTypeKey[A],
-    settings:           ClusterShardingSettings,
-    messageExtractor:   ShardingMessageExtractor[E, A],
-    allocationStrategy: Option[ShardAllocationStrategy]): ActorRef[E]
-
-  def spawnWithMessageExtractor2[E, A](
     behavior:           (ActorRef[ShardCommand], String) ⇒ Behavior[A],
     entityProps:        Props,
     typeKey:            EntityTypeKey[A],

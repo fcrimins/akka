@@ -21,13 +21,30 @@ import akka.japi.function.{ Function ⇒ JFunction }
 import akka.util.Timeout
 
 @FunctionalInterface
-trait EntityIdToBehavior[A] {
-  def apply(entityId: String): Behavior[A]
+trait EntityFactory[A] {
+  def apply(shardRegion: ActorRef[ClusterSharding.ShardCommand], entityId: String): Behavior[A]
 }
 
 object ClusterSharding {
   def get(system: ActorSystem[_]): ClusterSharding =
     scaladsl.ClusterSharding(system).asJava
+
+  /**
+   * When an entity is created an `ActorRef[ShardCommand]` is passed to the
+   * factory method. The entity can request passivation by sending the [[Passivate]]
+   * message to this ref. Sharding will then send back the specified
+   * `handOffStopMessage` message to the entity, which is then supposed to stop itself.
+   */
+  trait ShardCommand extends scaladsl.ClusterSharding.ShardCommand
+
+  /**
+   * The entity can request passivation by sending the [[Passivate]] message
+   * to the `ActorRef[ShardCommand]` that was passed in to the factory method
+   * when creating the entity. Sharding will then send back the specified
+   * `handOffStopMessage` message to the entity, which is then supposed to stop
+   * itself.
+   */
+  final case class Passivate[A](entity: ActorRef[A]) extends ShardCommand
 }
 
 /**
@@ -130,8 +147,9 @@ object ClusterSharding {
  * the entity actors for example by defining receive timeout (`context.setReceiveTimeout`).
  * If a message is already enqueued to the entity when it stops itself the enqueued message
  * in the mailbox will be dropped. To support graceful passivation without losing such
- * messages the entity actor can send [[ShardRegion.Passivate]] to its parent `ShardRegion`.
- * The specified wrapped message in `Passivate` will be sent back to the entity, which is
+ * messages the entity actor can send [[ClusterSharding.Passivate]] to the `ActorRef[ShardCommand]`
+ * that was passed in to the factory method when creating the entity..
+ * The specified `handOffStopMessage` message will be sent back to the entity, which is
  * then supposed to stop itself. Incoming messages will be buffered by the `ShardRegion`
  * between reception of `Passivate` and termination of the entity. Such buffered messages
  * are thereafter delivered to a new incarnation of the entity.
@@ -158,7 +176,7 @@ abstract class ClusterSharding {
    * @tparam A The type of command the entity accepts
    */
   def spawn[A](
-    behavior:           EntityIdToBehavior[A],
+    behavior:           EntityFactory[A],
     props:              Props,
     typeKey:            EntityTypeKey[A],
     settings:           ClusterShardingSettings,
@@ -179,7 +197,7 @@ abstract class ClusterSharding {
    * @tparam A The type of command the entity accepts
    */
   def spawnWithMessageExtractor[E, A](
-    behavior:           EntityIdToBehavior[A],
+    behavior:           EntityFactory[A],
     entityProps:        Props,
     typeKey:            EntityTypeKey[A],
     settings:           ClusterShardingSettings,
