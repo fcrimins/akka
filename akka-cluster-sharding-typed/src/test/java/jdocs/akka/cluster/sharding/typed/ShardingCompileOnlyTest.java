@@ -82,7 +82,7 @@ public class ShardingCompileOnlyTest {
           return Behaviors.same();
         })
         .onMessage(GoodByeCounter.class, (ctx, msg) -> {
-          // the handOffStopMessage, used for rebalance and passivate
+          // the stopMessage, used for rebalance and passivate
           return Behaviors.stopped();
         })
         .build();

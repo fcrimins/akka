@@ -10,7 +10,6 @@ import java.util.Optional
 import java.util.concurrent.{ CompletionStage, ConcurrentHashMap }
 import java.util.function
 
-import scala.compat.java8.OptionConverters._
 import scala.compat.java8.FutureConverters._
 import scala.concurrent.Future
 
@@ -44,8 +43,8 @@ import akka.util.ByteString
  * Extracts entityId and unwraps ShardingEnvelope and StartEntity messages.
  * Other messages are delegated to the given `ShardingMessageExtractor`.
  */
-@InternalApi private[akka] class ExtractorAdapter[E, A](delegate: ShardingMessageExtractor[E, A])
-  extends ShardingMessageExtractor[Any, A] {
+@InternalApi private[akka] class ExtractorAdapter[E, M](delegate: ShardingMessageExtractor[E, M])
+  extends ShardingMessageExtractor[Any, M] {
   override def entityId(message: Any): String = {
     message match {
       case ShardingEnvelope(entityId, _) ⇒ entityId //also covers UntypedStartEntity in ShardingEnvelope
@@ -56,20 +55,18 @@ import akka.util.ByteString
 
   override def shardId(entityId: String): String = delegate.shardId(entityId)
 
-  override def unwrapMessage(message: Any): A = {
+  override def unwrapMessage(message: Any): M = {
     message match {
-      case ShardingEnvelope(_, msg: A @unchecked) ⇒
+      case ShardingEnvelope(_, msg: M @unchecked) ⇒
         //also covers UntypedStartEntity in ShardingEnvelope
         msg
       case msg: UntypedStartEntity ⇒
-        // not really of type A, but erased and StartEntity is only handled internally, not delivered to the entity
-        msg.asInstanceOf[A]
+        // not really of type M, but erased and StartEntity is only handled internally, not delivered to the entity
+        msg.asInstanceOf[M]
       case msg: E @unchecked ⇒
         delegate.unwrapMessage(msg)
     }
   }
-
-  override def handOffStopMessage: A = delegate.handOffStopMessage
 
   override def toString: String = delegate.toString
 }
@@ -100,35 +97,40 @@ import akka.util.ByteString
   private val proxies: ConcurrentHashMap[String, String] = new ConcurrentHashMap
   private val shardCommandActors: ConcurrentHashMap[String, ActorRef[scaladsl.ClusterSharding.ShardCommand]] = new ConcurrentHashMap
 
-  override def spawn[A](
-    behavior:           (ActorRef[scaladsl.ClusterSharding.ShardCommand], String) ⇒ Behavior[A],
-    entityProps:        Props,
-    typeKey:            scaladsl.EntityTypeKey[A],
-    settings:           ClusterShardingSettings,
-    maxNumberOfShards:  Int,
-    handOffStopMessage: A): ActorRef[ShardingEnvelope[A]] = {
-    val extractor = new HashCodeMessageExtractor[A](maxNumberOfShards, handOffStopMessage)
-    spawnWithMessageExtractor(behavior, entityProps, typeKey, settings, extractor, Some(defaultShardAllocationStrategy(settings)))
+  override def start[M, E](shardedEntity: scaladsl.ShardedEntity[M, E]): ActorRef[E] = {
+    val settings = shardedEntity.settings match {
+      case None    ⇒ ClusterShardingSettings(system)
+      case Some(s) ⇒ s
+    }
+
+    val extractor = (shardedEntity.messageExtractor match {
+      case None    ⇒ new HashCodeMessageExtractor[M](settings.numberOfShards)
+      case Some(e) ⇒ e
+    }).asInstanceOf[ShardingMessageExtractor[E, M]]
+
+    spawnWithMessageExtractor(shardedEntity.create, shardedEntity.entityProps, shardedEntity.typeKey,
+      shardedEntity.stopMessage, settings, extractor, shardedEntity.allocationStrategy)
   }
 
-  override def spawn[A](
-    behavior:           EntityFactory[A],
-    entityProps:        Props,
-    typeKey:            javadsl.EntityTypeKey[A],
-    settings:           ClusterShardingSettings,
-    maxNumberOfShards:  Int,
-    handOffStopMessage: A): ActorRef[ShardingEnvelope[A]] = {
-    val extractor = new HashCodeMessageExtractor[A](maxNumberOfShards, handOffStopMessage)
-    spawnWithMessageExtractor(behavior, entityProps, typeKey, settings, extractor,
-      Optional.of(defaultShardAllocationStrategy(settings)))
+  override def spawn[M](
+    behavior:       EntityFactory[M],
+    entityProps:    Props,
+    typeKey:        javadsl.EntityTypeKey[M],
+    settings:       ClusterShardingSettings,
+    numberOfShards: Int,
+    stopMessage:    M): ActorRef[ShardingEnvelope[M]] = {
+    val extractor = new HashCodeMessageExtractor[M](numberOfShards)
+    spawnWithMessageExtractor((shard, entityId) ⇒ behavior.apply(shard, entityId), entityProps, typeKey.asScala,
+      stopMessage, settings, extractor, Some(defaultShardAllocationStrategy(settings)))
   }
 
-  def spawnWithMessageExtractor[E, A](
-    behavior:           (ActorRef[scaladsl.ClusterSharding.ShardCommand], String) ⇒ Behavior[A],
+  private def spawnWithMessageExtractor[M, E](
+    behavior:           (ActorRef[scaladsl.ClusterSharding.ShardCommand], String) ⇒ Behavior[M],
     entityProps:        Props,
-    typeKey:            scaladsl.EntityTypeKey[A],
+    typeKey:            scaladsl.EntityTypeKey[M],
+    stopMessage:        M,
     settings:           ClusterShardingSettings,
-    extractor:          ShardingMessageExtractor[E, A],
+    extractor:          ShardingMessageExtractor[E, M],
     allocationStrategy: Option[ShardAllocationStrategy]): ActorRef[E] = {
 
     val extractorAdapter = new ExtractorAdapter(extractor)
@@ -155,7 +157,7 @@ import akka.util.ByteString
             new java.util.function.Function[String, ActorRef[scaladsl.ClusterSharding.ShardCommand]] {
               override def apply(t: String): ActorRef[scaladsl.ClusterSharding.ShardCommand] = {
                 system.toUntyped.asInstanceOf[ExtendedActorSystem].systemActorOf(
-                  PropsAdapter(ShardCommandActor.behavior(extractor.handOffStopMessage)),
+                  PropsAdapter(ShardCommandActor.behavior(stopMessage)),
                   URLEncoder.encode(typeKey.name, ByteString.UTF_8) + "ShardCommandDelegator")
               }
             })
@@ -171,7 +173,7 @@ import akka.util.ByteString
           extractEntityId,
           extractShardId,
           allocationStrategy.getOrElse(defaultShardAllocationStrategy(settings)),
-          extractor.handOffStopMessage)
+          stopMessage)
       } else {
         log.info("Starting Shard Region Proxy [{}] (no actors will be hosted on this node) " +
           "for role [{}] and dataCenter [{}] ...", typeKey.name, settings.role, settings.dataCenter)
@@ -184,7 +186,7 @@ import akka.util.ByteString
           extractShardId)
       }
 
-    val messageClassName = typeKey.asInstanceOf[EntityTypeKeyImpl[A]].messageClassName
+    val messageClassName = typeKey.asInstanceOf[EntityTypeKeyImpl[M]].messageClassName
 
     val typeNames = if (settings.shouldHostShard(cluster)) regions else proxies
 
@@ -197,23 +199,20 @@ import akka.util.ByteString
     ActorRefAdapter(ref)
   }
 
-  override def spawnWithMessageExtractor[E, A](
-    behavior:           EntityFactory[A],
+  override def spawnWithMessageExtractor[E, M](
+    behavior:           EntityFactory[M],
     entityProps:        Props,
-    typeKey:            javadsl.EntityTypeKey[A],
+    typeKey:            javadsl.EntityTypeKey[M],
     settings:           ClusterShardingSettings,
-    extractor:          ShardingMessageExtractor[E, A],
-    allocationStrategy: Optional[ShardAllocationStrategy]): ActorRef[E] = {
-    spawnWithMessageExtractor((shard, entityId) ⇒ behavior.apply(shard, entityId), entityProps, typeKey.asScala,
-      settings, extractor, allocationStrategy.asScala)
+    extractor:          ShardingMessageExtractor[E, M],
+    allocationStrategy: Optional[ShardAllocationStrategy]): ActorRef[E] = ??? // FIXME remove
+
+  override def entityRefFor[M](typeKey: scaladsl.EntityTypeKey[M], entityId: String): scaladsl.EntityRef[M] = {
+    new EntityRefImpl[M](untypedSharding.shardRegion(typeKey.name), entityId)
   }
 
-  override def entityRefFor[A](typeKey: scaladsl.EntityTypeKey[A], entityId: String): scaladsl.EntityRef[A] = {
-    new EntityRefImpl[A](untypedSharding.shardRegion(typeKey.name), entityId)
-  }
-
-  override def entityRefFor[A](typeKey: javadsl.EntityTypeKey[A], entityId: String): javadsl.EntityRef[A] = {
-    new EntityRefImpl[A](untypedSharding.shardRegion(typeKey.name), entityId)
+  override def entityRefFor[M](typeKey: javadsl.EntityTypeKey[M], entityId: String): javadsl.EntityRef[M] = {
+    new EntityRefImpl[M](untypedSharding.shardRegion(typeKey.name), entityId)
   }
 
   override def defaultShardAllocationStrategy(settings: ClusterShardingSettings): ShardAllocationStrategy = {
@@ -227,13 +226,13 @@ import akka.util.ByteString
 /**
  * INTERNAL API
  */
-@InternalApi private[akka] final class EntityRefImpl[A](shardRegion: akka.actor.ActorRef, entityId: String)
-  extends javadsl.EntityRef[A] with scaladsl.EntityRef[A] {
+@InternalApi private[akka] final class EntityRefImpl[M](shardRegion: akka.actor.ActorRef, entityId: String)
+  extends javadsl.EntityRef[M] with scaladsl.EntityRef[M] {
 
-  override def tell(msg: A): Unit =
+  override def tell(msg: M): Unit =
     shardRegion ! ShardingEnvelope(entityId, msg)
 
-  override def ask[U](message: (ActorRef[U]) ⇒ A)(implicit timeout: Timeout, scheduler: Scheduler): Future[U] = {
+  override def ask[U](message: (ActorRef[U]) ⇒ M)(implicit timeout: Timeout, scheduler: Scheduler): Future[U] = {
     val replyTo = new EntityPromiseRef[U](shardRegion.asInstanceOf[InternalActorRef], timeout)
     val m = message(replyTo.ref)
     if (replyTo.promiseRef ne null) replyTo.promiseRef.messageClassName = m.getClass.getName
@@ -241,7 +240,7 @@ import akka.util.ByteString
     replyTo.future
   }
 
-  def ask[U](message: JFunction[ActorRef[U], A], timeout: Timeout, scheduler: Scheduler): CompletionStage[U] =
+  def ask[U](message: JFunction[ActorRef[U], M], timeout: Timeout, scheduler: Scheduler): CompletionStage[U] =
     ask[U](replyTo ⇒ message.apply(replyTo))(timeout, scheduler).toJava
 
   /** Similar to [[akka.actor.typed.scaladsl.AskPattern.PromiseRef]] but for an `EntityRef` target. */

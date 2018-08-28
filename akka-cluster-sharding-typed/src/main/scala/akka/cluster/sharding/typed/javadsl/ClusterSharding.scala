@@ -33,7 +33,7 @@ object ClusterSharding {
    * When an entity is created an `ActorRef[ShardCommand]` is passed to the
    * factory method. The entity can request passivation by sending the [[Passivate]]
    * message to this ref. Sharding will then send back the specified
-   * `handOffStopMessage` message to the entity, which is then supposed to stop itself.
+   * `stopMessage` message to the entity, which is then supposed to stop itself.
    */
   trait ShardCommand extends scaladsl.ClusterSharding.ShardCommand
 
@@ -41,7 +41,7 @@ object ClusterSharding {
    * The entity can request passivation by sending the [[Passivate]] message
    * to the `ActorRef[ShardCommand]` that was passed in to the factory method
    * when creating the entity. Sharding will then send back the specified
-   * `handOffStopMessage` message to the entity, which is then supposed to stop
+   * `stopMessage` message to the entity, which is then supposed to stop
    * itself.
    */
   final case class Passivate[A](entity: ActorRef[A]) extends ShardCommand
@@ -149,7 +149,7 @@ object ClusterSharding {
  * in the mailbox will be dropped. To support graceful passivation without losing such
  * messages the entity actor can send [[ClusterSharding.Passivate]] to the `ActorRef[ShardCommand]`
  * that was passed in to the factory method when creating the entity..
- * The specified `handOffStopMessage` message will be sent back to the entity, which is
+ * The specified `stopMessage` message will be sent back to the entity, which is
  * then supposed to stop itself. Incoming messages will be buffered by the `ShardRegion`
  * between reception of `Passivate` and termination of the entity. Such buffered messages
  * are thereafter delivered to a new incarnation of the entity.
@@ -172,16 +172,16 @@ abstract class ClusterSharding {
    *
    * @param behavior Create the behavior for an entity given a entityId
    * @param typeKey A key that uniquely identifies the type of entity in this cluster
-   * @param handOffStopMessage Message sent to an entity to tell it to stop, e.g. when rebalanced.
+   * @param stopMessage Message sent to an entity to tell it to stop, e.g. when rebalanced.
    * @tparam A The type of command the entity accepts
    */
   def spawn[A](
-    behavior:           EntityFactory[A],
-    props:              Props,
-    typeKey:            EntityTypeKey[A],
-    settings:           ClusterShardingSettings,
-    maxNumberOfShards:  Int,
-    handOffStopMessage: A): ActorRef[ShardingEnvelope[A]]
+    behavior:       EntityFactory[A],
+    props:          Props,
+    typeKey:        EntityTypeKey[A],
+    settings:       ClusterShardingSettings,
+    numberOfShards: Int,
+    stopMessage:    A): ActorRef[ShardingEnvelope[A]]
 
   /**
    * Spawn a shard region or a proxy depending on if the settings require role and if this node
@@ -215,7 +215,10 @@ abstract class ClusterSharding {
    */
   def entityRefFor[A](typeKey: EntityTypeKey[A], entityId: String): EntityRef[A]
 
-  /** The default ShardAllocationStrategy currently is [[LeastShardAllocationStrategy]] however could be changed in the future. */
+  /**
+   * The default is currently [[akka.cluster.sharding.ShardCoordinator.LeastShardAllocationStrategy]] with the
+   * given `settings`. This could be changed in the future.
+   */
   def defaultShardAllocationStrategy(settings: ClusterShardingSettings): ShardAllocationStrategy
 }
 
