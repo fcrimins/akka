@@ -322,7 +322,7 @@ object BroadcastHub {
    *                   concurrent consumers can be in terms of element. If this buffer is full, the producer
    *                   is backpressured. Must be a power of two and less than 4096.
    */
-  def sink[T](bufferSize: Int): Sink[T, Source[T, NotUsed]] = Sink.fromGraph(new BroadcastHub[T](bufferSize))
+  def sink[T](bufferSize: Int, name: String = ""): Sink[T, Source[T, NotUsed]] = Sink.fromGraph(new BroadcastHub[T](bufferSize, name = name))
 
   /**
    * Creates a [[Sink]] that receives elements from its upstream producer and broadcasts them to a dynamic set
@@ -347,10 +347,13 @@ object BroadcastHub {
 /**
  * INTERNAL API
  */
-private[akka] class BroadcastHub[T](bufferSize: Int) extends GraphStageWithMaterializedValue[SinkShape[T], Source[T, NotUsed]] {
+private[akka] class BroadcastHub[T](bufferSize: Int, name: String = "") extends GraphStageWithMaterializedValue[SinkShape[T], Source[T, NotUsed]] {
   require(bufferSize > 0, "Buffer size must be positive")
   require(bufferSize < 4096, "Buffer size larger then 4095 is not allowed")
   require((bufferSize & bufferSize - 1) == 0, "Buffer size must be a power of two")
+
+  def cprint(msg: String): Unit = if (name == "Clock") println(s"\033[35mBH\033[0m $name: $msg [${Thread.currentThread.getName}]")
+  cprint("\033[35mBH\033[0m: akka-stream version " + Option(getClass.getPackage.getImplementationVersion).getOrElse("null"))
 
   private val Mask = bufferSize - 1
   private val WheelMask = (bufferSize * 2) - 1
@@ -368,7 +371,10 @@ private[akka] class BroadcastHub[T](bufferSize: Int) extends GraphStageWithMater
   private final case class Advance(id: Long, previousOffset: Int) extends HubEvent
   private final case class NeedWakeup(id: Long, previousOffset: Int, currentOffset: Int) extends HubEvent
 
-  private final case class Consumer(id: Long, callback: AsyncCallback[ConsumerEvent])
+  private final case class Consumer(
+    id:               Long,
+    callback:         AsyncCallback[ConsumerEvent],
+    registerCallback: AsyncCallback[Try[AsyncCallback[HubEvent]]])
 
   private object Completed
 
@@ -409,15 +415,32 @@ private[akka] class BroadcastHub[T](bufferSize: Int) extends GraphStageWithMater
     private[this] var activeConsumers = 0
 
     override def preStart(): Unit = {
+      cprint("STARTING BROADCAST HUB (preStart)")
       setKeepGoing(true)
       callbackPromise.success(getAsyncCallback[HubEvent](onEvent))
-      pull(in)
+
+      implicit val ec = materializer.executionContext
+      callbackPromise.future.onComplete { tri ⇒
+        state.get() match {
+          case Closed(_) ⇒
+          case Open(_, registrations) ⇒
+            cprint(s"REGISTERING ${registrations.size} CONSUMERS")
+            // Only the first of these will have any effect as it will state.getAndSet(noRegistrationsState).
+            registrations.foreach(reg ⇒ if (reg.registerCallback != null) reg.registerCallback.invoke(tri))
+            cprint(s"done registering ${registrations.size} consumers")
+        }
+
+        // Wait until initial registration events are scheduled before pulling any messages from the producer.
+        cprint(s"pulling from input port")
+        pull(in)
+      }
     }
 
     // Cannot complete immediately if there is no space in the queue to put the completion marker
     override def onUpstreamFinish(): Unit = if (!isFull) complete()
 
     override def onPush(): Unit = {
+      cprint(s"onPush (isFull=$isFull)")
       publish(grab(in))
       if (!isFull) pull(in)
     }
@@ -425,10 +448,13 @@ private[akka] class BroadcastHub[T](bufferSize: Int) extends GraphStageWithMater
     private def onEvent(ev: HubEvent): Unit = {
       ev match {
         case RegistrationPending ⇒
-          state.getAndSet(noRegistrationsState).asInstanceOf[Open].registrations foreach { consumer ⇒
+          val x = state.getAndSet(noRegistrationsState).asInstanceOf[Open].registrations
+          cprint(s"RegistrationPending (nPending=${x.size})")
+          x foreach { consumer ⇒
             val startFrom = head
             activeConsumers += 1
             addConsumer(consumer, startFrom)
+            cprint(s"RegistrationPending: added consumer (activeConsumers=$activeConsumers, startFrom=$startFrom)")
             // in case the consumer is already stopped we need to undo registration
             implicit val ec = materializer.executionContext
             consumer.callback.invokeWithFeedback(Initialize(startFrom)).onFailure {
@@ -440,6 +466,7 @@ private[akka] class BroadcastHub[T](bufferSize: Int) extends GraphStageWithMater
           }
 
         case UnRegister(id, previousOffset, finalOffset) ⇒
+          cprint(s"UnRegister($id)")
           if (findAndRemoveConsumer(id, previousOffset) != null)
             activeConsumers -= 1
           if (activeConsumers == 0) {
@@ -457,12 +484,15 @@ private[akka] class BroadcastHub[T](bufferSize: Int) extends GraphStageWithMater
           } else checkUnblock(previousOffset)
 
         case Advance(id, previousOffset) ⇒
+          cprint(s"Advance($id)")
           val newOffset = previousOffset + DemandThreshold
           // Move the consumer from its last known offset to its new one. Check if we are unblocked.
           val consumer = findAndRemoveConsumer(id, previousOffset)
           addConsumer(consumer, newOffset)
           checkUnblock(previousOffset)
+
         case NeedWakeup(id, previousOffset, currentOffset) ⇒
+          cprint(s"NeedWakeup($id)")
           // Move the consumer from its last known offset to its new one. Check if we are unblocked.
           val consumer = findAndRemoveConsumer(id, previousOffset)
           addConsumer(consumer, currentOffset)
@@ -544,6 +574,7 @@ private[akka] class BroadcastHub[T](bufferSize: Int) extends GraphStageWithMater
 
     private def addConsumer(consumer: Consumer, offset: Int): Unit = {
       val slot = offset & WheelMask
+      cprint(s"addConsumer: slot = $slot = $offset & $WheelMask")
       consumerWheel(slot) = consumer :: consumerWheel(slot)
     }
 
@@ -586,6 +617,7 @@ private[akka] class BroadcastHub[T](bufferSize: Int) extends GraphStageWithMater
     }
 
     private def publish(elem: T): Unit = {
+      cprint(s"publishing: $elem")
       val idx = tail & Mask
       val wheelSlot = tail & WheelMask
       queue(idx) = elem.asInstanceOf[AnyRef]
@@ -610,6 +642,8 @@ private[akka] class BroadcastHub[T](bufferSize: Int) extends GraphStageWithMater
   private final case class Initialize(offset: Int) extends ConsumerEvent
 
   override def createLogicAndMaterializedValue(inheritedAttributes: Attributes): (GraphStageLogic, Source[T, NotUsed]) = {
+    cprint(s"createLogicAndMaterializedValue construction")
+
     val idCounter = new AtomicLong()
 
     val logic = new BroadcastSinkLogic(shape)
@@ -621,8 +655,10 @@ private[akka] class BroadcastHub[T](bufferSize: Int) extends GraphStageWithMater
       override def createLogic(inheritedAttributes: Attributes): GraphStageLogic = new GraphStageLogic(shape) with OutHandler {
         private[this] var untilNextAdvanceSignal = DemandThreshold
         private[this] val id = idCounter.getAndIncrement()
+        cprint(s"GSL($id): createLogic id=$id")
         private[this] var offsetInitialized = false
         private[this] var hubCallback: AsyncCallback[HubEvent] = _
+        private[this] var registerCallback: AsyncCallback[Try[AsyncCallback[HubEvent]]] = _
 
         /*
          * We need to track our last offset that we published to the Hub. The reason is, that for efficiency reasons,
@@ -633,27 +669,57 @@ private[akka] class BroadcastHub[T](bufferSize: Int) extends GraphStageWithMater
         private[this] var previousPublishedOffset = 0
         private[this] var offset = 0
 
-        override def preStart(): Unit = {
+        {
+          cprint(s"GSL($id): former preStart begin")
           val callback = getAsyncCallback(onCommand)
 
           val onHubReady: Try[AsyncCallback[HubEvent]] ⇒ Unit = {
             case Success(callback) ⇒
+              cprint(s"GSL($id): onHubReady: setting $hubCallback, isAvailable(out)=${isAvailable(out)}, offsetInitialized=$offsetInitialized")
               hubCallback = callback
-              if (isAvailable(out) && offsetInitialized) onPull()
+              if (isAvailable(out) && offsetInitialized) {
+                cprint(s"GSL($id): onHubReady: onPull (sending demand to hub)")
+                onPull()
+              }
               callback.invoke(RegistrationPending)
             case Failure(ex) ⇒
               failStage(ex)
           }
 
           @tailrec def register(): Unit = {
+            cprint(s"GSL($id): register")
             logic.state.get() match {
-              case Closed(Some(ex)) ⇒ failStage(ex)
-              case Closed(None)     ⇒ completeStage()
+              case Closed(_) ⇒
               case previousState @ Open(callbackFuture, registrations) ⇒
-                val newRegistrations = Consumer(id, callback) :: registrations
-                if (logic.state.compareAndSet(previousState, Open(callbackFuture, newRegistrations))) {
-                  callbackFuture.onComplete(getAsyncCallback(onHubReady).invoke)(materializer.executionContext)
-                } else register()
+                cprint(s"GSL($id): Creating new consumer (callbackFuture.isCompleted=${callbackFuture.isCompleted})")
+
+                /*
+                 * Possible race?
+                 * 1. GSL: callbackFuture.isCompleted == false
+                 * 2. BSL: callbackPromise.success
+                 * 3. BSL: state.get() -> registrations.foreach
+                 * 4. BSL:   onEvent.RegistrationPending
+                 * 5. GSL: newConsumer :: registrations (append to list)
+                 *
+                 * No, here's why: logic.state.compareAndSet below will be false
+                 *   effectively, we've mutexed logic.state between `case previousState` above and compareAndSet below
+                 */
+
+                /*
+                 * Before logic's callbackFuture is complete attach registration callbacks to Consumer instances so
+                 * that they can be scheduled during logic's preStart, before pulling from logic's input port.  But
+                 * as soon as logic's callbackFuture is completed, revert to original behavior of registering each
+                 * consumer during it's own respective preStart.  Any such consumers attached after start won't expect
+                 * to receive all the initial messages, but those consumers attached before start may.
+                 */
+                val cb = getAsyncCallback(onHubReady)
+                val newConsumer = Consumer(id, callback,
+                  if (callbackFuture.isCompleted) { registerCallback = cb; null } else { registerCallback = null; cb })
+                val newRegistrations = newConsumer :: registrations
+                cprint(s"GSL($id): nRegistrations=${registrations.size}, nNew=${newRegistrations.size}")
+
+                if (!logic.state.compareAndSet(previousState, Open(callbackFuture, newRegistrations)))
+                  register()
             }
           }
 
@@ -665,7 +731,20 @@ private[akka] class BroadcastHub[T](bufferSize: Int) extends GraphStageWithMater
            * to only serve elements after both offsetInitialized = true and hubCallback is not null.
            */
           register()
+          cprint(s"GSL($id): former preStart end")
+        }
 
+        override def preStart(): Unit = {
+          cprint(s"GSL($id): new preStart begin")
+          logic.state.get() match {
+            case Closed(Some(ex)) ⇒ failStage(ex)
+            case Closed(None)     ⇒ completeStage()
+            case Open(callbackFuture, _) ⇒
+              cprint(s"GSL($id): Invoking registerCallback if $registerCallback != null")
+              if (registerCallback != null)
+                callbackFuture.onComplete(registerCallback.invoke)(materializer.executionContext)
+          }
+          cprint(s"GSL($id): new preStart end")
         }
 
         override def onPull(): Unit = {
@@ -674,12 +753,14 @@ private[akka] class BroadcastHub[T](bufferSize: Int) extends GraphStageWithMater
 
             elem match {
               case null ⇒
+                cprint(s"GSL($id): onPull -> hubCallback.invoke($id, $previousPublishedOffset, $offset)")
                 hubCallback.invoke(NeedWakeup(id, previousPublishedOffset, offset))
                 previousPublishedOffset = offset
                 untilNextAdvanceSignal = DemandThreshold
               case Completed ⇒
                 completeStage()
               case _ ⇒
+                cprint(s"GSL($id): onPull -> push")
                 push(out, elem.asInstanceOf[T])
                 offset += 1
                 untilNextAdvanceSignal -= 1
@@ -699,14 +780,21 @@ private[akka] class BroadcastHub[T](bufferSize: Int) extends GraphStageWithMater
         }
 
         private def onCommand(cmd: ConsumerEvent): Unit = cmd match {
-          case HubCompleted(Some(ex)) ⇒ failStage(ex)
-          case HubCompleted(None)     ⇒ completeStage()
+          case HubCompleted(Some(ex)) ⇒
+            cprint(s"GSL($id): HubCompleted Some")
+            failStage(ex)
+          case HubCompleted(None) ⇒
+            cprint(s"GSL($id): HubCompleted None")
+            completeStage()
           case Wakeup ⇒
+            cprint(s"GSL($id): Wakeup, isAvailable(out)=${isAvailable(out)}")
             if (isAvailable(out)) onPull()
           case Initialize(initialOffset) ⇒
+            cprint(s"GSL($id): Initialize($initialOffset)")
             offsetInitialized = true
             previousPublishedOffset = initialOffset
             offset = initialOffset
+            cprint(s"GSL($id): Initialize, offset=$offset")
             if (isAvailable(out) && (hubCallback ne null)) onPull()
         }
 
@@ -749,8 +837,8 @@ object PartitionHub {
    * cancelled are simply removed from the dynamic set of consumers.
    *
    * This `statefulSink` should be used when there is a need to keep mutable state in the partition function,
-   * e.g. for implemening round-robin or sticky session kind of routing. If state is not needed the [[#sink]] can
-   * be more convenient to use.
+   * e.g. for implemening round-robin or sticky session kind of routing. If state is not needed the
+   * [[PartitionHub#sink]] can be more convenient to use.
    *
    * @param partitioner Function that decides where to route an element. It is a factory of a function to
    *   to be able to hold stateful variables that are unique for each materialization. The function
@@ -784,7 +872,7 @@ object PartitionHub {
    * cancelled are simply removed from the dynamic set of consumers.
    *
    * This `sink` should be used when the routing function is stateless, e.g. based on a hashed value of the
-   * elements. Otherwise the [[#statefulSink]] can be used to implement more advanced routing logic.
+   * elements. Otherwise the [[PartitionHub#statefulSink]] can be used to implement more advanced routing logic.
    *
    * @param partitioner Function that decides where to route an element. The function takes two parameters;
    *   the first is the number of active consumers and the second is the stream element. The function should
@@ -814,8 +902,8 @@ object PartitionHub {
      * Sequence of all identifiers of current consumers.
      *
      * Use this method only if you need to enumerate consumer existing ids.
-     * When selecting a specific consumerId by its index, prefer using the dedicated [[#consumerIdByIdx]] method instead,
-     * which is optimised for this use case.
+     * When selecting a specific consumerId by its index, prefer using the dedicated [[ConsumerInfo#consumerIdByIdx]]
+     * method instead, which is optimised for this use case.
      */
     def consumerIds: immutable.IndexedSeq[Long]
 
