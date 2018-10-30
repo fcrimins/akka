@@ -1,4 +1,4 @@
-/**
+/*
  * Copyright (C) 2009-2018 Lightbend Inc. <https://www.lightbend.com>
  */
 
@@ -28,7 +28,7 @@ public class DeviceGroup extends AbstractActor {
   }
 
   public static Props props(String groupId) {
-    return Props.create(DeviceGroup.class, groupId);
+    return Props.create(DeviceGroup.class, () -> new DeviceGroup(groupId));
   }
 
   public static final class RequestDeviceList {

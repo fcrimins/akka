@@ -1,4 +1,4 @@
-/**
+/*
  * Copyright (C) 2015-2018 Lightbend Inc. <https://www.lightbend.com>
  */
 
@@ -321,6 +321,18 @@ class SinkSpec extends StreamSpec with DefaultTimeout with ScalaFutures {
       mat.shutdown()
 
       matVal.failed.futureValue shouldBe a[AbruptStageTerminationException]
+    }
+  }
+
+  "The reduce sink" must {
+    "sum up 1 to 10 correctly" in {
+      //#reduce-operator-example
+      val source = Source(1 to 10)
+      val result = source.runWith(Sink.reduce[Int]((a, b) ⇒ a + b))
+      result.map(println)(system.dispatcher)
+      // 55
+      //#reduce-operator-example
+      assert(result.futureValue == (1 to 10 sum))
     }
   }
 

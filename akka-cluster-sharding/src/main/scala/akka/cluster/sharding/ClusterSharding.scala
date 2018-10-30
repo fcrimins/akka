@@ -1,4 +1,4 @@
-/**
+/*
  * Copyright (C) 2009-2018 Lightbend Inc. <https://www.lightbend.com>
  */
 
@@ -7,7 +7,6 @@ package akka.cluster.sharding
 import java.net.URLEncoder
 import java.util.Optional
 import java.util.concurrent.ConcurrentHashMap
-import java.util.function.{ Function ⇒ JFunc }
 
 import scala.collection.JavaConverters._
 import scala.collection.immutable
@@ -158,7 +157,6 @@ object ClusterSharding extends ExtensionId[ClusterSharding] with ExtensionIdProv
  * @see [[ClusterSharding$ ClusterSharding companion object]]
  */
 class ClusterSharding(system: ExtendedActorSystem) extends Extension {
-
   import ClusterShardingGuardian._
   import ShardCoordinator.LeastShardAllocationStrategy
   import ShardCoordinator.ShardAllocationStrategy
@@ -231,18 +229,20 @@ class ClusterSharding(system: ExtendedActorSystem) extends Extension {
     handOffStopMessage: Any): ActorRef = {
 
     if (settings.shouldHostShard(cluster)) {
-      regions.computeIfAbsent(typeName, new JFunc[String, ActorRef] {
-        def apply(typeName: String): ActorRef = {
+      regions.get(typeName) match {
+        case null ⇒
+          // it's ok to Start several time, the guardian will deduplicate concurrent requests
           implicit val timeout = system.settings.CreationTimeout
           val startMsg = Start(typeName, entityProps, settings,
             extractEntityId, extractShardId, allocationStrategy, handOffStopMessage)
           val Started(shardRegion) = Await.result(guardian ? startMsg, timeout.duration)
+          regions.put(typeName, shardRegion)
           shardRegion
-        }
-      })
-
+        case ref ⇒ ref // already started, use cached ActorRef
+      }
     } else {
       log.debug("Starting Shard Region Proxy [{}] (no actors will be hosted on this node)...", typeName)
+
       startProxy(
         typeName,
         settings.role,
@@ -417,16 +417,19 @@ class ClusterSharding(system: ExtendedActorSystem) extends Extension {
     dataCenter:      Option[DataCenter],
     extractEntityId: ShardRegion.ExtractEntityId,
     extractShardId:  ShardRegion.ExtractShardId): ActorRef = {
-    // it must be possible to start several proxies, one per data center
-    proxies.computeIfAbsent(proxyName(typeName, dataCenter), new JFunc[String, ActorRef] {
-      def apply(name: String): ActorRef = {
+
+    proxies.get(proxyName(typeName, dataCenter)) match {
+      case null ⇒
+        // it's ok to StartProxy several time, the guardian will deduplicate concurrent requests
         implicit val timeout = system.settings.CreationTimeout
         val settings = ClusterShardingSettings(system).withRole(role)
         val startMsg = StartProxy(typeName, dataCenter, settings, extractEntityId, extractShardId)
         val Started(shardRegion) = Await.result(guardian ? startMsg, timeout.duration)
+        // it must be possible to start several proxies, one per data center
+        proxies.put(proxyName(typeName, dataCenter), shardRegion)
         shardRegion
-      }
-    })
+      case ref ⇒ ref // already started, use cached ActorRef
+    }
   }
 
   private def proxyName(typeName: String, dataCenter: Option[DataCenter]): String = {
@@ -539,6 +542,10 @@ class ClusterSharding(system: ExtendedActorSystem) extends Extension {
     }
   }
 
+  /**
+   * The default is currently [[akka.cluster.sharding.ShardCoordinator.LeastShardAllocationStrategy]] with the
+   * given `settings`. This could be changed in the future.
+   */
   def defaultShardAllocationStrategy(settings: ClusterShardingSettings): ShardAllocationStrategy = {
     val threshold = settings.tuningParameters.leastShardAllocationRebalanceThreshold
     val maxSimultaneousRebalance = settings.tuningParameters.leastShardAllocationMaxSimultaneousRebalance
@@ -644,7 +651,8 @@ private[akka] class ClusterShardingGuardian extends Actor {
               childName = "coordinator",
               minBackoff = coordinatorFailureBackoff,
               maxBackoff = coordinatorFailureBackoff * 5,
-              randomFactor = 0.2)
+              randomFactor = 0.2,
+              maxNrOfRetries = -1)
               .withDeploy(Deploy.local)
             val singletonSettings = settings.coordinatorSingletonSettings
               .withSingletonName("singleton")

@@ -1,4 +1,4 @@
-/**
+/*
  * Copyright (C) 2017-2018 Lightbend Inc. <https://www.lightbend.com>
  */
 
@@ -7,18 +7,19 @@ package akka.persistence.typed.scaladsl
 import akka.actor.testkit.typed.TestKitSettings
 import akka.actor.testkit.typed.scaladsl._
 import akka.actor.typed.scaladsl.Behaviors
-import akka.actor.typed.{ ActorRef, Behavior, SupervisorStrategy, TypedAkkaSpecWithShutdown }
+import akka.actor.typed.{ ActorRef, Behavior, SupervisorStrategy }
 import akka.actor.testkit.typed.TE
 import akka.persistence.AtomicWrite
 import akka.persistence.journal.inmem.InmemJournal
 import akka.persistence.typed.EventRejectedException
-import com.typesafe.config.{ Config, ConfigFactory }
-import org.scalatest.concurrent.Eventually
-
+import com.typesafe.config.ConfigFactory
+import org.scalatest.WordSpecLike
 import scala.collection.immutable
 import scala.concurrent.Future
 import scala.concurrent.duration._
 import scala.util.Try
+
+import akka.persistence.typed.PersistenceId
 
 class ChaosJournal extends InmemJournal {
   var count = 0
@@ -62,17 +63,13 @@ object PersistentBehaviorFailureSpec {
     """).withFallback(ConfigFactory.load("reference.conf")).resolve()
 }
 
-class PersistentBehaviorFailureSpec extends ActorTestKit with TypedAkkaSpecWithShutdown with Eventually {
-
-  import PersistentBehaviorSpec._
-
-  override lazy val config: Config = PersistentBehaviorFailureSpec.conf
+class PersistentBehaviorFailureSpec extends ScalaTestWithActorTestKit(PersistentBehaviorFailureSpec.conf) with WordSpecLike {
 
   implicit val testSettings = TestKitSettings(system)
 
-  def failingPersistentActor(pid: String, probe: ActorRef[String]): Behavior[String] = PersistentBehaviors.receive[String, String, String](
+  def failingPersistentActor(pid: PersistenceId, probe: ActorRef[String]): Behavior[String] = PersistentBehavior[String, String, String](
     pid, "",
-    (ctx, state, cmd) ⇒ {
+    (_, cmd) ⇒ {
       probe.tell("persisting")
       Effect.persist(cmd)
     },
@@ -80,14 +77,14 @@ class PersistentBehaviorFailureSpec extends ActorTestKit with TypedAkkaSpecWithS
       probe.tell(event)
       state + event
     }
-  ).onRecoveryCompleted { (ctx, state) ⇒
+  ).onRecoveryCompleted { state ⇒
       probe.tell("starting")
     }.onPersistFailure(SupervisorStrategy.restartWithBackoff(1.milli, 5.millis, 0.1))
 
   "A typed persistent actor (failures)" must {
     "restart with backoff" in {
       val probe = TestProbe[String]()
-      val behav = failingPersistentActor("fail-first-2", probe.ref)
+      val behav = failingPersistentActor(PersistenceId("fail-first-2"), probe.ref)
       val c = spawn(behav)
       probe.expectMessage("starting")
       // fail
@@ -110,7 +107,7 @@ class PersistentBehaviorFailureSpec extends ActorTestKit with TypedAkkaSpecWithS
 
     "restart with backoff for recovery" in {
       val probe = TestProbe[String]()
-      val behav = failingPersistentActor("fail-recovery-once", probe.ref)
+      val behav = failingPersistentActor(PersistenceId("fail-recovery-once"), probe.ref)
       spawn(behav)
       // First time fails, second time should work and call onRecoveryComplete
       probe.expectMessage("starting")
@@ -121,7 +118,7 @@ class PersistentBehaviorFailureSpec extends ActorTestKit with TypedAkkaSpecWithS
       val probe = TestProbe[String]()
       val behav =
         Behaviors.supervise(
-          failingPersistentActor("reject-first", probe.ref)).onFailure[EventRejectedException](
+          failingPersistentActor(PersistenceId("reject-first"), probe.ref)).onFailure[EventRejectedException](
             SupervisorStrategy.restartWithBackoff(1.milli, 5.millis, 0.1))
       val c = spawn(behav)
       // First time fails, second time should work and call onRecoveryComplete

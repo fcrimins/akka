@@ -1,4 +1,4 @@
-/**
+/*
  * Copyright (C) 2017-2018 Lightbend Inc. <https://www.lightbend.com>
  */
 
@@ -10,13 +10,20 @@ import java.util.concurrent.atomic.AtomicInteger
 
 import scala.concurrent.duration._
 import scala.util.control.NoStackTrace
+import akka.actor.testkit.typed.scaladsl._
 import akka.actor.typed.scaladsl.Behaviors
 import akka.actor.typed.scaladsl.TimerScheduler
-import akka.testkit.TimingTest
-import akka.actor.testkit.typed.scaladsl.{ ActorTestKit, _ }
+import akka.testkit.{ EventFilter, TimingTest }
 import org.scalatest.WordSpecLike
 
-class TimerSpec extends ActorTestKit with WordSpecLike with TypedAkkaSpecWithShutdown {
+class TimerSpec extends ScalaTestWithActorTestKit(
+  """
+    akka.loggers = [ akka.testkit.TestEventListener ]
+  """) with WordSpecLike {
+
+  // FIXME eventfilter support in typed testkit
+  import scaladsl.adapter._
+  implicit val untypedSystem = system.toUntyped
 
   sealed trait Command
   case class Tick(n: Int) extends Command
@@ -165,14 +172,16 @@ class TimerSpec extends ActorTestKit with WordSpecLike with TypedAkkaSpecWithShu
       probe.expectMessage(Tock(1))
 
       val latch = new CountDownLatch(1)
-      // next Tock(1) is enqueued in mailbox, but should be discarded by new incarnation
-      ref ! SlowThenThrow(latch, new Exc)
-      probe.expectNoMessage(interval + 100.millis.dilated)
-      latch.countDown()
-      probe.expectMessage(GotPreRestart(false))
-      probe.expectNoMessage(interval / 2)
-      probe.expectMessage(Tock(2))
+      EventFilter[Exc](occurrences = 1).intercept {
+        // next Tock(1) is enqueued in mailbox, but should be discarded by new incarnation
+        ref ! SlowThenThrow(latch, new Exc)
 
+        probe.expectNoMessage(interval + 100.millis.dilated)
+        latch.countDown()
+        probe.expectMessage(GotPreRestart(false))
+        probe.expectNoMessage(interval / 2)
+        probe.expectMessage(Tock(2))
+      }
       ref ! End
       probe.expectMessage(GotPostStop(false))
     }
@@ -191,13 +200,15 @@ class TimerSpec extends ActorTestKit with WordSpecLike with TypedAkkaSpecWithShu
 
       probe.expectMessage(Tock(2))
 
-      val latch = new CountDownLatch(1)
-      // next Tock(2) is enqueued in mailbox, but should be discarded by new incarnation
-      ref ! SlowThenThrow(latch, new Exc)
-      probe.expectNoMessage(interval + 100.millis.dilated)
-      latch.countDown()
-      probe.expectMessage(GotPreRestart(false))
-      probe.expectMessage(Tock(1))
+      EventFilter[Exc](occurrences = 1).intercept {
+        val latch = new CountDownLatch(1)
+        // next Tock(2) is enqueued in mailbox, but should be discarded by new incarnation
+        ref ! SlowThenThrow(latch, new Exc)
+        probe.expectNoMessage(interval + 100.millis.dilated)
+        latch.countDown()
+        probe.expectMessage(GotPreRestart(false))
+        probe.expectMessage(Tock(1))
+      }
 
       ref ! End
       probe.expectMessage(GotPostStop(false))
@@ -210,8 +221,10 @@ class TimerSpec extends ActorTestKit with WordSpecLike with TypedAkkaSpecWithShu
         target(probe.ref, timer, 1)
       }
       val ref = spawn(behv)
-      ref ! Throw(new Exc)
-      probe.expectMessage(GotPostStop(false))
+      EventFilter[Exc](occurrences = 1).intercept {
+        ref ! Throw(new Exc)
+        probe.expectMessage(GotPostStop(false))
+      }
     }
 
     "cancel timers when stopped voluntarily" taggedAs TimingTest in {

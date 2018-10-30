@@ -1,4 +1,4 @@
-/**
+/*
  * Copyright (C) 2017-2018 Lightbend Inc. <https://www.lightbend.com>
  */
 
@@ -298,15 +298,16 @@ public class IntroTest {
       ctx.watch(gabbler);
       chatRoom.tell(new ChatRoom.GetSession("ol’ Gabbler", gabbler));
 
-      return Behaviors.receive(Void.class)
-        .onSignal(Terminated.class, (c, sig) -> Behaviors.stopped())
-        .build();
+      return Behaviors.<Void>receiveSignal(
+          (c, sig) -> {
+            if (sig instanceof Terminated) return Behaviors.stopped();
+            else return Behaviors.unhandled();
+          }
+      );
     });
 
     final ActorSystem<Void> system =
       ActorSystem.create(main, "ChatRoomDemo");
-
-    system.getWhenTerminated().toCompletableFuture().get();
     //#chatroom-main
   }
 

@@ -20,6 +20,7 @@ akka.AkkaBuild.buildSettings
 shellPrompt := { s => Project.extract(s).currentProject.id + " > " }
 resolverSettings
 
+// When this is updated the set of modules in ActorSystem.allModules should also be updated
 lazy val aggregatedProjects: Seq[ProjectReference] = Seq(
   actor, actorTests,
   agent,
@@ -227,10 +228,9 @@ lazy val docs = akkaModule("akka-docs")
       "algolia.docsearch.index_name" -> "akka_io",
       "google.analytics.account" -> "UA-21117439-1",
       "google.analytics.domain.name" -> "akka.io",
-      "snip.code.base_dir" -> (sourceDirectory in Test).value.getAbsolutePath,
-      "snip.akka.base_dir" -> (baseDirectory in ThisBuild).value.getAbsolutePath,
       "signature.akka.base_dir" -> (baseDirectory in ThisBuild).value.getAbsolutePath,
-      "fiddle.code.base_dir" -> (sourceDirectory in Test).value.getAbsolutePath
+      "fiddle.code.base_dir" -> (sourceDirectory in Test).value.getAbsolutePath,
+      "fiddle.akka.base_dir" -> (baseDirectory in ThisBuild).value.getAbsolutePath,
     ),
     paradoxGroups := Map("Language" -> Seq("Scala", "Java")),
     resolvers += Resolver.jcenterRepo,

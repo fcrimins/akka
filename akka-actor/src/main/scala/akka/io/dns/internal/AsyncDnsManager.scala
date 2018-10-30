@@ -10,7 +10,7 @@ import java.util.concurrent.TimeUnit
 import akka.actor.{ Actor, ActorLogging, ActorRefFactory, Deploy, Props, Timers }
 import akka.annotation.InternalApi
 import akka.dispatch.{ RequiresMessageQueue, UnboundedMessageQueueSemantics }
-import akka.io.dns.{ ARecord, DnsProtocol, DnsSettings }
+import akka.io.dns.{ AAAARecord, ARecord, DnsProtocol, DnsSettings }
 import akka.io.dns.internal.AsyncDnsManager.CacheCleanup
 import akka.io.{ Dns, DnsExt, PeriodicCacheCleanup }
 import akka.routing.FromConfig
@@ -70,26 +70,19 @@ private[io] final class AsyncDnsManager(val ext: DnsExt) extends Actor
     case Dns.Resolve(name) ⇒
       // adapt legacy protocol to new protocol
       log.debug("Resolution request for {} from {}", name, sender())
-      warnAboutOldProtocolUse(name)
       val adapted = DnsProtocol.Resolve(name)
       val reply = (resolver ? adapted).mapTo[DnsProtocol.Resolved]
         .map { asyncResolved ⇒
-          val ips = asyncResolved.records.collect { case a: ARecord ⇒ a.ip }
+          val ips = asyncResolved.records.collect {
+            case a: ARecord    ⇒ a.ip
+            case a: AAAARecord ⇒ a.ip
+          }
           Dns.Resolved(asyncResolved.name, ips)
         }
       reply pipeTo sender
 
     case CacheCleanup ⇒
       cacheCleanup.foreach(_.cleanup())
-  }
-
-  private def warnAboutOldProtocolUse(name: String): Unit = {
-    val warnAtMostTimes = 10
-    if (oldProtocolWarningLoggedTimes < warnAtMostTimes) {
-      oldProtocolWarningLoggedTimes += 1
-      log.warning("Received Dns.Resolve({}) message while Async DNS resolver active. Please use the new API [akka.io.dns.DnsProtocol] to issue resolve requests. " +
-        "(This warning will be logged at most {} times)", name, warnAtMostTimes)
-    }
   }
 }
 

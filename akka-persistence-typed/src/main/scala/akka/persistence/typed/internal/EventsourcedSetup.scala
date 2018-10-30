@@ -1,4 +1,4 @@
-/**
+/*
  * Copyright (C) 2009-2018 Lightbend Inc. <https://www.lightbend.com>
  */
 
@@ -9,18 +9,19 @@ import scala.concurrent.ExecutionContext
 import akka.Done
 import akka.actor.typed.Logger
 import akka.actor.{ ActorRef, ExtendedActorSystem }
-import akka.actor.typed.scaladsl.{ ActorContext, StashBuffer, TimerScheduler }
+import akka.actor.typed.scaladsl.{ ActorContext, StashBuffer }
 import akka.annotation.InternalApi
 import akka.persistence._
 import akka.persistence.typed.EventAdapter
 import akka.persistence.typed.internal.EventsourcedBehavior.MDC
 import akka.persistence.typed.internal.EventsourcedBehavior.{ InternalProtocol, WriterIdentity }
-import akka.persistence.typed.scaladsl.PersistentBehaviors
+import akka.persistence.typed.scaladsl.PersistentBehavior
 import akka.util.Collections.EmptyImmutableSeq
 import akka.util.OptionVal
 import scala.util.Try
 
 import akka.actor.Cancellable
+import akka.persistence.typed.PersistenceId
 import akka.persistence.typed.internal.EventsourcedBehavior.InternalProtocol.RecoveryTickEvent
 
 /**
@@ -29,13 +30,13 @@ import akka.persistence.typed.internal.EventsourcedBehavior.InternalProtocol.Rec
 @InternalApi
 private[persistence] final class EventsourcedSetup[C, E, S](
   val context:               ActorContext[InternalProtocol],
-  val persistenceId:         String,
+  val persistenceId:         PersistenceId,
   val emptyState:            S,
-  val commandHandler:        PersistentBehaviors.CommandHandler[C, E, S],
-  val eventHandler:          PersistentBehaviors.EventHandler[S, E],
+  val commandHandler:        PersistentBehavior.CommandHandler[C, E, S],
+  val eventHandler:          PersistentBehavior.EventHandler[S, E],
   val writerIdentity:        WriterIdentity,
-  val recoveryCompleted:     (ActorContext[C], S) ⇒ Unit,
-  val onSnapshot:            (ActorContext[C], SnapshotMetadata, Try[Done]) ⇒ Unit,
+  val recoveryCompleted:     S ⇒ Unit,
+  val onSnapshot:            (SnapshotMetadata, Try[Done]) ⇒ Unit,
   val tagger:                E ⇒ Set[String],
   val eventAdapter:          EventAdapter[E, _],
   val snapshotWhen:          (S, E, Long) ⇒ Boolean,
@@ -45,8 +46,6 @@ private[persistence] final class EventsourcedSetup[C, E, S](
   val internalStash:         StashBuffer[InternalProtocol]
 ) {
   import akka.actor.typed.scaladsl.adapter._
-
-  def commandContext: ActorContext[C] = context.asInstanceOf[ActorContext[C]]
 
   val persistence: Persistence = Persistence(context.system.toUntyped)
 

@@ -1,16 +1,21 @@
-/**
+/*
  * Copyright (C) 2017-2018 Lightbend Inc. <https://www.lightbend.com>
  */
 
 package akka.actor.typed
 package scaladsl
 
-import akka.actor.testkit.typed.scaladsl.{ ActorTestKit, TestProbe }
+import akka.actor.testkit.typed.scaladsl.ScalaTestWithActorTestKit
+import akka.actor.testkit.typed.scaladsl.TestProbe
+import org.scalatest.WordSpecLike
 
-class ReceivePartialSpec extends ActorTestKit with TypedAkkaSpecWithShutdown {
+import scala.concurrent.duration._
+
+class ReceivePartialSpec extends ScalaTestWithActorTestKit with WordSpecLike {
+
+  implicit val ec = system.executionContext
 
   "An immutable partial" must {
-
     "correctly install the receiveMessage handler" in {
       val probe = TestProbe[Command]("probe")
       val behavior =

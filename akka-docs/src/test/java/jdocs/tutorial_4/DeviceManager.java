@@ -1,4 +1,4 @@
-/**
+/*
  * Copyright (C) 2009-2018 Lightbend Inc. <https://www.lightbend.com>
  */
 
@@ -19,7 +19,7 @@ public class DeviceManager extends AbstractActor {
   private final LoggingAdapter log = Logging.getLogger(getContext().getSystem(), this);
 
   public static Props props() {
-    return Props.create(DeviceManager.class);
+    return Props.create(DeviceManager.class, DeviceManager::new);
   }
 
   //#device-manager-msgs

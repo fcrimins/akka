@@ -1,4 +1,4 @@
-/**
+/*
  * Copyright (C) 2009-2018 Lightbend Inc. <https://www.lightbend.com>
  */
 
@@ -131,6 +131,8 @@ private[akka] object ClusterSingletonImpl {
  */
 @DoNotInherit
 abstract class ClusterSingleton extends Extension {
+
+  // FIXME align with ClusterSharding API, issue #25480
 
   /**
    * Start if needed and provide a proxy to a named singleton

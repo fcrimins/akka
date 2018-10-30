@@ -1,14 +1,17 @@
-/**
+/*
  * Copyright (C) 2018 Lightbend Inc. <https://www.lightbend.com>
  */
 
 package akka.persistence.typed.javadsl;
 
 import akka.actor.Scheduler;
+import akka.actor.typed.Behavior;
 import akka.actor.typed.javadsl.ActorContext;
 import akka.actor.typed.ActorRef;
+import akka.actor.typed.javadsl.Behaviors;
 import akka.persistence.typed.EventAdapter;
 import akka.actor.testkit.typed.javadsl.TestInbox;
+import akka.persistence.typed.PersistenceId;
 import akka.persistence.typed.SideEffect;
 import akka.util.Timeout;
 
@@ -89,7 +92,9 @@ public class PersistentActorCompileOnlyTest {
 
 
     //#behavior
-    public static PersistentBehavior<SimpleCommand, SimpleEvent, SimpleState> pb = new PersistentBehavior<SimpleCommand, SimpleEvent, SimpleState>("p1") {
+    public static PersistentBehavior<SimpleCommand, SimpleEvent, SimpleState> pb =
+        new PersistentBehavior<SimpleCommand, SimpleEvent, SimpleState>(new PersistenceId("p1")) {
+
       @Override
       public SimpleState emptyState() {
         return new SimpleState();
@@ -152,11 +157,14 @@ public class PersistentActorCompileOnlyTest {
 
     //#commonChainedEffects
     // Factored out Chained effect
-    static final SideEffect<ExampleState>  commonChainedEffect = SideEffect.create(s -> System.out.println("Command handled!"));
+    static final SideEffect<ExampleState>  commonChainedEffect =
+        SideEffect.create(s -> System.out.println("Command handled!"));
 
     //#commonChainedEffects
 
-    private PersistentBehavior<MyCommand, MyEvent, ExampleState> pa = new PersistentBehavior<MyCommand, MyEvent, ExampleState>("pa") {
+    private PersistentBehavior<MyCommand, MyEvent, ExampleState> pa =
+        new PersistentBehavior<MyCommand, MyEvent, ExampleState>(new PersistenceId("pa")) {
+
       @Override
       public ExampleState emptyState() {
         return new ExampleState();
@@ -266,13 +274,24 @@ public class PersistentActorCompileOnlyTest {
         .thenAccept(sender::tell);
     }
 
+    // #actor-context
+    public Behavior<Command> behavior(PersistenceId persistenceId) {
+      return Behaviors.setup(ctx -> new MyPersistentBehavior(persistenceId, ctx));
+    }
+
+    // #actor-context
+
+    // #actor-context
     class MyPersistentBehavior extends PersistentBehavior<Command, Event, RecoveryComplete.EventsInFlight> {
+
+      // this makes the context available to the command handler etc.
       private final ActorContext<Command> ctx;
 
-      public MyPersistentBehavior(String persistenceId, ActorContext<Command> ctx) {
+      public MyPersistentBehavior(PersistenceId persistenceId, ActorContext<Command> ctx) {
         super(persistenceId);
         this.ctx = ctx;
       }
+      // #actor-context
 
       @Override
       public EventsInFlight emptyState() {
@@ -307,4 +326,5 @@ public class PersistentActorCompileOnlyTest {
       }
     }
   }
+
 }

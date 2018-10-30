@@ -1,10 +1,13 @@
-/**
+/*
  * Copyright (C) 2016-2018 Lightbend Inc. <https://www.lightbend.com>
  */
 
 package akka.actor.typed
 
-class PropsSpec extends TypedAkkaSpec {
+import org.scalatest.Matchers
+import org.scalatest.WordSpec
+
+class PropsSpec extends WordSpec with Matchers {
 
   val dispatcherFirst = DispatcherDefault(DispatcherFromConfig("pool"))
 

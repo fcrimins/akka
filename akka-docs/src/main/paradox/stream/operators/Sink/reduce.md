@@ -8,7 +8,7 @@ Apply a reduction function on the incoming elements and pass the result to the n
 
 ## Signature
 
-@@signature [Sink.scala]($akka$/akka-stream/src/main/scala/akka/stream/scaladsl/Sink.scala) { #reduce }
+@@signature [Sink.scala](/akka-stream/src/main/scala/akka/stream/scaladsl/Sink.scala) { #reduce }
 
 @@@
 
@@ -27,3 +27,10 @@ Materializes into a @scala[`Future`] @java[`CompletionStage`] that will be compl
 
 @@@
 
+## Example
+
+Scala
+:   @@snip [SinkReduceSpec.scala](/akka-stream-tests/src/test/scala/akka/stream/scaladsl/SinkSpec.scala) { #reduce-operator-example }
+
+Java
+:   @@snip [SinkDocExamples.java](/akka-docs/src/test/java/jdocs/stream/operators/SinkDocExamples.java) { #reduce-operator-example }

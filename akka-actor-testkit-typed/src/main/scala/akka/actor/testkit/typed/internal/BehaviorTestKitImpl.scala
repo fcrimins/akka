@@ -1,4 +1,4 @@
-/**
+/*
  * Copyright (C) 2009-2018 Lightbend Inc. <https://www.lightbend.com>
  */
 
@@ -49,6 +49,9 @@ private[akka] final class BehaviorTestKitImpl[T](_path: ActorPath, _initialBehav
     assert(inbox.isDefined, s"Child not created: $name. Children created: [${ctx.childrenNames.mkString(",")}]")
     inbox.get
   }
+
+  override def childInbox[U](ref: ActorRef[U]): TestInboxImpl[U] =
+    childInbox(ref.path.name)
 
   override def childTestKit[U](child: ActorRef[U]): BehaviorTestKitImpl[U] = ctx.childTestKit(child)
 

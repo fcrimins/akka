@@ -1,4 +1,4 @@
-/**
+/*
  * Copyright (C) 2017-2018 Lightbend Inc. <https://www.lightbend.com>
  */
 
@@ -6,14 +6,17 @@ package akka.actor.typed
 
 import akka.Done
 import akka.actor.typed.scaladsl.Behaviors
-import akka.actor.typed.scaladsl.MutableBehavior
+import akka.actor.typed.scaladsl.AbstractBehavior
 import akka.actor.typed.scaladsl.adapter._
 import akka.testkit.EventFilter
-import akka.actor.testkit.typed.scaladsl.{ ActorTestKit, TestProbe }
+import akka.actor.testkit.typed.scaladsl.TestProbe
 
 import scala.concurrent._
 import scala.concurrent.duration._
+import akka.actor.testkit.typed.TestException
+import akka.actor.testkit.typed.scaladsl.ScalaTestWithActorTestKit
 import com.typesafe.config.ConfigFactory
+import org.scalatest.WordSpecLike
 
 object WatchSpec {
   val config = ConfigFactory.parseString("""akka.loggers = ["akka.testkit.TestEventListener"]""")
@@ -25,7 +28,7 @@ object WatchSpec {
       case (_, Stop) ⇒ Behaviors.stopped
     }
 
-  val mutableTerminatorBehavior = new MutableBehavior[Stop.type] {
+  val mutableTerminatorBehavior = new AbstractBehavior[Stop.type] {
     override def onMessage(msg: Stop.type) = msg match {
       case Stop ⇒ Behaviors.stopped
     }
@@ -39,20 +42,20 @@ object WatchSpec {
   case class StartWatchingWith(watchee: ActorRef[Stop.type], msg: CustomTerminationMessage) extends Message
 }
 
-class WatchSpec extends ActorTestKit
-  with TypedAkkaSpecWithShutdown {
+class WatchSpec extends ScalaTestWithActorTestKit(WatchSpec.config) with WordSpecLike {
+  // FIXME why systemActor? spawn?
+  import testKit.systemActor
 
-  override def config = WatchSpec.config
   implicit def untypedSystem = system.toUntyped
 
   import WatchSpec._
 
   class WatchSetup {
-    val terminator = systemActor(terminatorBehavior)
+    val terminator = spawn(terminatorBehavior)
     val receivedTerminationSignal: Promise[Terminated] = Promise()
     val watchProbe = TestProbe[Done]()
 
-    val watcher = systemActor(
+    val watcher = spawn(
       Behaviors.supervise(
         Behaviors.receive[StartWatching] {
           case (ctx, StartWatching(watchee)) ⇒
@@ -155,11 +158,11 @@ class WatchSpec extends ActorTestKit
     }
 
     class WatchWithSetup {
-      val terminator = systemActor(terminatorBehavior)
+      val terminator = spawn(terminatorBehavior)
       val receivedTerminationSignal: Promise[Message] = Promise()
       val watchProbe = TestProbe[Done]()
 
-      val watcher = systemActor(
+      val watcher = spawn(
         Behaviors.supervise(
           Behaviors.receive[Message] {
             case (ctx, StartWatchingWith(watchee, msg)) ⇒
@@ -191,11 +194,11 @@ class WatchSpec extends ActorTestKit
     }
 
     "allow watch message definition after watch using unwatch" in {
-      val terminator = systemActor(terminatorBehavior)
+      val terminator = spawn(terminatorBehavior)
       val receivedTerminationSignal: Promise[Message] = Promise()
       val watchProbe = TestProbe[Done]()
 
-      val watcher = systemActor(
+      val watcher = spawn(
         Behaviors.supervise(
           Behaviors.receive[Message] {
             case (ctx, StartWatching(watchee)) ⇒
@@ -221,11 +224,11 @@ class WatchSpec extends ActorTestKit
     }
 
     "allow watch message redefinition using unwatch" in {
-      val terminator = systemActor(terminatorBehavior)
+      val terminator = spawn(terminatorBehavior)
       val receivedTerminationSignal: Promise[Message] = Promise()
       val watchProbe = TestProbe[Done]()
 
-      val watcher = systemActor(
+      val watcher = spawn(
         Behaviors.supervise(
           Behaviors.receive[Message] {
             case (ctx, StartWatchingWith(watchee, msg)) ⇒
@@ -248,10 +251,10 @@ class WatchSpec extends ActorTestKit
     }
 
     class ErrorTestSetup {
-      val terminator = systemActor(terminatorBehavior)
+      val terminator = spawn(terminatorBehavior)
       private val stopProbe = TestProbe[Done]()
 
-      val watcher = systemActor(
+      val watcher = spawn(
         Behaviors.supervise(
           Behaviors.receive[Message] {
             case (ctx, StartWatchingWith(watchee, msg)) ⇒

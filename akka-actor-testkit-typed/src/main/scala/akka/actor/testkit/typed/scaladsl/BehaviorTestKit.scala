@@ -1,4 +1,4 @@
-/**
+/*
  * Copyright (C) 2009-2018 Lightbend Inc. <https://www.lightbend.com>
  */
 
@@ -52,6 +52,11 @@ trait BehaviorTestKit[T] {
    * spawned
    */
   def childInbox[U](name: String): TestInbox[U]
+
+  /**
+   * Get the child inbox for the child ActorRef, or fail if there is no such child.
+   */
+  def childInbox[U](child: ActorRef[U]): TestInbox[U]
 
   /**
    * Get the [[akka.actor.typed.Behavior]] testkit for the given child [[akka.actor.typed.ActorRef]].

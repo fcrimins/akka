@@ -1,4 +1,4 @@
-/**
+/*
  * Copyright (C) 2009-2018 Lightbend Inc. <https://www.lightbend.com>
  */
 
@@ -27,7 +27,7 @@ public class Device extends AbstractActor {
   }
 
   public static Props props(String groupId, String deviceId) {
-    return Props.create(Device.class, groupId, deviceId);
+    return Props.create(Device.class, () -> new Device(groupId, deviceId));
   }
 
   public static final class RecordTemperature {

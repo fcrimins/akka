@@ -1,18 +1,22 @@
-/**
+/*
  * Copyright (C) 2014-2018 Lightbend Inc. <https://www.lightbend.com>
  */
 
 package akka.actor.typed
 
 import akka.actor.typed.scaladsl.{ Behaviors ⇒ SBehaviors }
-import akka.actor.typed.scaladsl.{ MutableBehavior ⇒ SMutableBehavior }
+import akka.actor.typed.scaladsl.{ AbstractBehavior ⇒ SAbstractBehavior }
 import akka.actor.typed.javadsl.{ ActorContext ⇒ JActorContext, Behaviors ⇒ JBehaviors }
 import akka.japi.function.{ Function ⇒ F1e, Function2 ⇒ F2, Procedure2 ⇒ P2 }
 import akka.japi.pf.{ FI, PFBuilder }
 import java.util.function.{ Function ⇒ F1 }
 
 import akka.Done
+import akka.actor.testkit.typed.scaladsl.ScalaTestWithActorTestKit
 import akka.actor.testkit.typed.scaladsl.{ BehaviorTestKit, TestInbox }
+import org.scalactic.TypeCheckedTripleEquals
+import org.scalatest.Matchers
+import org.scalatest.WordSpecLike
 
 object BehaviorSpec {
   sealed trait Command {
@@ -63,7 +67,7 @@ object BehaviorSpec {
     override def next = StateA
   }
 
-  trait Common extends TypedAkkaSpec {
+  trait Common extends WordSpecLike with Matchers with TypeCheckedTripleEquals {
     type Aux >: Null <: AnyRef
     def behavior(monitor: ActorRef[Event]): (Behavior[Command], Aux)
     def checkAux(signal: Signal, aux: Aux): Unit = ()
@@ -338,7 +342,7 @@ object BehaviorSpec {
 
 import BehaviorSpec._
 
-class FullBehaviorSpec extends TypedAkkaSpec with Messages with BecomeWithLifecycle with Stoppable {
+class FullBehaviorSpec extends ScalaTestWithActorTestKit with Messages with BecomeWithLifecycle with Stoppable {
   override def behavior(monitor: ActorRef[Event]): (Behavior[Command], Aux) = mkFull(monitor) → null
 }
 
@@ -374,7 +378,7 @@ class ReceiveBehaviorSpec extends Messages with BecomeWithLifecycle with Stoppab
   }
 }
 
-class ImmutableWithSignalScalaBehaviorSpec extends TypedAkkaSpec with Messages with BecomeWithLifecycle with Stoppable {
+class ImmutableWithSignalScalaBehaviorSpec extends Messages with BecomeWithLifecycle with Stoppable {
 
   override def behavior(monitor: ActorRef[Event]): (Behavior[Command], Aux) = behv(monitor) → null
 
@@ -447,7 +451,7 @@ class MutableScalaBehaviorSpec extends Messages with Become with Stoppable {
 
   def behv(monitor: ActorRef[Event]): Behavior[Command] =
     SBehaviors.setup[Command] { ctx ⇒
-      new SMutableBehavior[Command] {
+      new SAbstractBehavior[Command] {
         private var state: State = StateA
 
         override def onMessage(msg: Command): Behavior[Command] = {

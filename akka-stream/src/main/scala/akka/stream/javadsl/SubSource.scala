@@ -1,4 +1,4 @@
-/**
+/*
  * Copyright (C) 2015-2018 Lightbend Inc. <https://www.lightbend.com>
  */
 
@@ -6,8 +6,7 @@ package akka.stream.javadsl
 
 import akka.NotUsed
 import akka.event.LoggingAdapter
-import akka.japi.function
-import akka.japi.Util
+import akka.japi.{ Pair, Util, function }
 import akka.stream._
 import akka.util.ConstantFun
 import akka.util.JavaDurationConverters._
@@ -1480,6 +1479,21 @@ class SubSource[Out, Mat](delegate: scaladsl.SubFlow[Out, Mat, scaladsl.Source[O
     new SubSource(delegate.zip(source).map { case (o, t) ⇒ akka.japi.Pair.create(o, t) })
 
   /**
+   * Combine the elements of current [[Flow]] and the given [[Source]] into a stream of tuples, picking always the latest element of each.
+   *
+   * '''Emits when''' all of the inputs have at least an element available, and then each time an element becomes
+   *                  available on either of the inputs
+   *
+   * '''Backpressures when''' downstream backpressures
+   *
+   * '''Completes when''' any upstream completes
+   *
+   * '''Cancels when''' downstream cancels
+   */
+  def zipLatest[T](source: Graph[SourceShape[T], _]): SubSource[akka.japi.Pair[Out @uncheckedVariance, T], Mat] =
+    new SubSource(delegate.zipLatest(source).map { case (o, t) ⇒ akka.japi.Pair.create(o, t) })
+
+  /**
    * Put together the elements of current [[Flow]] and the given [[Source]]
    * into a stream of combined elements using a combiner function.
    *
@@ -1495,6 +1509,24 @@ class SubSource[Out, Mat](delegate: scaladsl.SubFlow[Out, Mat, scaladsl.Source[O
     that:    Graph[SourceShape[Out2], _],
     combine: function.Function2[Out, Out2, Out3]): SubSource[Out3, Mat] =
     new SubSource(delegate.zipWith[Out2, Out3](that)(combinerToScala(combine)))
+
+  /**
+   * Put together the elements of current [[Flow]] and the given [[Source]]
+   * into a stream of combined elements using a combiner function, picking always the latest element of each.
+   *
+   * '''Emits when''' all of the inputs have at least an element available, and then each time an element becomes
+   *                  available on either of the inputs
+   *
+   * '''Backpressures when''' downstream backpressures
+   *
+   * '''Completes when''' any upstream completes
+   *
+   * '''Cancels when''' downstream cancels
+   */
+  def zipLatestWith[Out2, Out3](
+    that:    Graph[SourceShape[Out2], _],
+    combine: function.Function2[Out, Out2, Out3]): SubSource[Out3, Mat] =
+    new SubSource(delegate.zipLatestWith[Out2, Out3](that)(combinerToScala(combine)))
 
   /**
    * Combine the elements of current [[Source]] into a stream of tuples consisting

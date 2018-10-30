@@ -1,14 +1,14 @@
-/**
+/*
  * Copyright (C) 2009-2018 Lightbend Inc. <https://www.lightbend.com>
  */
 
 package akka.actor.testkit.typed.scaladsl
 
 import akka.actor.typed.scaladsl.Behaviors
-
 import scala.concurrent.duration._
+import org.scalatest.WordSpecLike
 
-class TestProbeSpec extends AbstractActorSpec {
+class TestProbeSpec extends ScalaTestWithActorTestKit with WordSpecLike {
 
   def compileOnlyApiTest(): Unit = {
     val probe = TestProbe[AnyRef]()
@@ -80,6 +80,17 @@ class TestProbeSpec extends AbstractActorSpec {
         probe.fishForMessage(300.millis) {
           case "one" ⇒ FishingOutcomes.continue
           case "two" ⇒ FishingOutcomes.fail("not the fish I'm looking for")
+        }
+      }
+    }
+
+    "throw an AssertionError when the fishing probe times out" in {
+      val probe = TestProbe[AnyRef]()
+
+      assertThrows[AssertionError] {
+        probe.fishForMessage(100.millis) { _ ⇒
+          Thread.sleep(150)
+          FishingOutcomes.complete
         }
       }
     }

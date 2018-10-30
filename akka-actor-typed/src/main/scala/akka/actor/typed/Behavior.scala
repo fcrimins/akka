@@ -1,4 +1,4 @@
-/**
+/*
  * Copyright (C) 2014-2018 Lightbend Inc. <https://www.lightbend.com>
  */
 
@@ -130,6 +130,7 @@ object Behavior {
    * that is not necessary.
    */
   def same[T]: Behavior[T] = SameBehavior.asInstanceOf[Behavior[T]]
+
   /**
    * Return this behavior from message processing in order to advise the
    * system to reuse the previous behavior, including the hint that the

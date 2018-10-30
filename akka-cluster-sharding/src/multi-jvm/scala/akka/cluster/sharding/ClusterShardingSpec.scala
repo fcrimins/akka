@@ -1,4 +1,4 @@
-/**
+/*
  * Copyright (C) 2009-2018 Lightbend Inc. <https://www.lightbend.com>
  */
 
@@ -309,7 +309,8 @@ abstract class ClusterShardingSpec(config: ClusterShardingSpecConfig) extends Mu
           childName = "coordinator",
           minBackoff = 5.seconds,
           maxBackoff = 5.seconds,
-          randomFactor = 0.1).withDeploy(Deploy.local)
+          randomFactor = 0.1,
+          maxNrOfRetries = -1).withDeploy(Deploy.local)
         system.actorOf(
           ClusterSingletonManager.props(
             singletonProps,

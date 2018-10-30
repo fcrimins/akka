@@ -1,11 +1,15 @@
-/**
+/*
  * Copyright (C) 2017-2018 Lightbend Inc. <https://www.lightbend.com>
  */
 
 package akka.cluster.ddata.typed.scaladsl
 
+import org.scalatest.WordSpecLike
+import akka.actor.testkit.typed.TestKitSettings
+
+// #sample
 import akka.actor.Scheduler
-import akka.actor.typed.{ ActorRef, Behavior, TypedAkkaSpecWithShutdown }
+import akka.actor.typed.{ ActorRef, Behavior }
 import akka.actor.typed.scaladsl.AskPattern._
 import akka.actor.typed.scaladsl.Behaviors
 import akka.actor.typed.scaladsl.adapter._
@@ -13,13 +17,13 @@ import akka.cluster.Cluster
 import akka.cluster.ddata.typed.scaladsl.Replicator._
 import akka.cluster.ddata.{ GCounter, GCounterKey, ReplicatedData }
 import akka.actor.testkit.typed.scaladsl._
-import akka.actor.testkit.typed.TestKitSettings
 import akka.util.Timeout
 import com.typesafe.config.ConfigFactory
-import org.scalatest.concurrent.Eventually
 
 import scala.concurrent.Future
 import scala.concurrent.duration._
+
+// #sample
 
 object ReplicatorSpec {
 
@@ -31,19 +35,23 @@ object ReplicatorSpec {
     akka.remote.artery.canonical.hostname = 127.0.0.1
     """)
 
+  // #sample
   sealed trait ClientCommand
   final case object Increment extends ClientCommand
   final case class GetValue(replyTo: ActorRef[Int]) extends ClientCommand
   final case class GetCachedValue(replyTo: ActorRef[Int]) extends ClientCommand
   private sealed trait InternalMsg extends ClientCommand
-  private case class InternalUpdateResponse[A <: ReplicatedData](rsp: Replicator.UpdateResponse[A]) extends InternalMsg
-  private case class InternalGetResponse[A <: ReplicatedData](rsp: Replicator.GetResponse[A]) extends InternalMsg
-  private case class InternalChanged[A <: ReplicatedData](chg: Replicator.Changed[A]) extends InternalMsg
+  private case class InternalUpdateResponse(rsp: Replicator.UpdateResponse[GCounter]) extends InternalMsg
+  private case class InternalGetResponse(rsp: Replicator.GetResponse[GCounter]) extends InternalMsg
+  private case class InternalChanged(chg: Replicator.Changed[GCounter]) extends InternalMsg
 
   val Key = GCounterKey("counter")
 
   def client(replicator: ActorRef[Replicator.Command])(implicit cluster: Cluster): Behavior[ClientCommand] =
     Behaviors.setup[ClientCommand] { ctx ⇒
+
+      // The distributed data types still need the implicit untyped Cluster.
+      // We will look into another solution for that.
 
       val updateResponseAdapter: ActorRef[Replicator.UpdateResponse[GCounter]] =
         ctx.messageAdapter(InternalUpdateResponse.apply)
@@ -92,6 +100,7 @@ object ReplicatorSpec {
 
       behavior(cachedValue = 0)
     }
+  // #sample
 
   object CompileOnlyTest {
     def shouldHaveConvenienceForAsk(): Unit = {
@@ -116,9 +125,7 @@ object ReplicatorSpec {
 
 }
 
-class ReplicatorSpec extends ActorTestKit with TypedAkkaSpecWithShutdown with Eventually {
-
-  override def config = ReplicatorSpec.config
+class ReplicatorSpec extends ScalaTestWithActorTestKit(ReplicatorSpec.config) with WordSpecLike {
 
   import ReplicatorSpec._
 

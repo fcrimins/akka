@@ -1,4 +1,4 @@
-/**
+/*
  * Copyright (C) 2015-2018 Lightbend Inc. <https://www.lightbend.com>
  */
 
@@ -191,6 +191,19 @@ class FlowConcatSpec extends BaseTwoStreamsSetup {
       sub2.sendComplete()
 
       probeSink.expectComplete()
+    }
+
+    "work in example" in {
+      //#concat
+      import akka.stream.scaladsl.Source
+      import akka.stream.scaladsl.Sink
+
+      val sourceA = Source(List(1, 2, 3, 4))
+      val sourceB = Source(List(10, 20, 30, 40))
+
+      sourceA.concat(sourceB).runWith(Sink.foreach(println))
+      //prints 1, 2, 3, 4, 10, 20, 30, 40
+      //#concat
     }
   }
 }

@@ -1,13 +1,15 @@
-/**
+/*
  * Copyright (C) 2009-2018 Lightbend Inc. <https://www.lightbend.com>
  */
 
 package akka.actor.typed
 
-import akka.actor.testkit.typed.scaladsl.{ ActorTestKit, TestProbe }
+import akka.actor.testkit.typed.scaladsl.ScalaTestWithActorTestKit
+import akka.actor.testkit.typed.scaladsl.TestProbe
 import akka.actor.typed.scaladsl.Behaviors
+import org.scalatest.WordSpecLike
 
-class MonitorSpec extends ActorTestKit with TypedAkkaSpecWithShutdown {
+class MonitorSpec extends ScalaTestWithActorTestKit with WordSpecLike {
 
   "The monitor behavior" should {
 

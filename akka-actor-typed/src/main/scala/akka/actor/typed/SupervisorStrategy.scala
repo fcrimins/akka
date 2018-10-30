@@ -1,4 +1,4 @@
-/**
+/*
  * Copyright (C) 2017-2018 Lightbend Inc. <https://www.lightbend.com>
  */
 
@@ -86,6 +86,8 @@ object SupervisorStrategy {
    * The strategy is applied also if the actor behavior is deferred and throws an exception during
    * startup.
    *
+   * A maximum number of restarts can be specified with [[Backoff#withMaxRestarts]]
+   *
    * @param minBackoff minimum (initial) duration until the child actor will
    *   started again, if it is terminated
    * @param maxBackoff the exponential back-off is capped to this duration
@@ -97,7 +99,7 @@ object SupervisorStrategy {
     minBackoff:   FiniteDuration,
     maxBackoff:   FiniteDuration,
     randomFactor: Double): BackoffSupervisorStrategy =
-    Backoff(minBackoff, maxBackoff, randomFactor, resetBackoffAfter = minBackoff, loggingEnabled = true)
+    Backoff(minBackoff, maxBackoff, randomFactor, resetBackoffAfter = minBackoff, loggingEnabled = true, maxRestarts = -1)
 
   /**
    * Java API: It supports exponential back-off between the given `minBackoff` and
@@ -158,6 +160,8 @@ object SupervisorStrategy {
 
     override def withLoggingEnabled(enabled: Boolean): SupervisorStrategy =
       copy(loggingEnabled = enabled)
+
+    def unlimitedRestarts(): Boolean = maxNrOfRetries == -1
   }
 
   /**
@@ -168,7 +172,8 @@ object SupervisorStrategy {
     maxBackoff:        FiniteDuration,
     randomFactor:      Double,
     resetBackoffAfter: FiniteDuration,
-    loggingEnabled:    Boolean) extends BackoffSupervisorStrategy {
+    loggingEnabled:    Boolean,
+    maxRestarts:       Int) extends BackoffSupervisorStrategy {
 
     override def withLoggingEnabled(enabled: Boolean): SupervisorStrategy =
       copy(loggingEnabled = enabled)
@@ -180,6 +185,9 @@ object SupervisorStrategy {
       withResetBackoffAfter(timeout.asScala)
 
     override def getResetBackoffAfter: java.time.Duration = resetBackoffAfter.asJava
+
+    override def withMaxRestarts(maxRestarts: Int): BackoffSupervisorStrategy =
+      copy(maxRestarts = maxRestarts)
   }
 }
 
@@ -207,4 +215,10 @@ sealed abstract class BackoffSupervisorStrategy extends SupervisorStrategy {
    * the same value as `minBackoff`.
    */
   def withResetBackoffAfter(timeout: java.time.Duration): BackoffSupervisorStrategy
+
+  /**
+   * Allow at most this number of failed restarts in a row. Zero or negative disables
+   * the upper limit on restarts (and is the default)
+   */
+  def withMaxRestarts(maxRestarts: Int): BackoffSupervisorStrategy
 }

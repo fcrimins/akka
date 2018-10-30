@@ -1,4 +1,4 @@
-/**
+/*
  * Copyright (C) 2016-2018 Lightbend Inc. <https://www.lightbend.com>
  */
 
@@ -7,7 +7,7 @@ package akka.persistence.typed.internal
 import akka.Done
 import akka.actor.typed.Behavior
 import akka.actor.typed.scaladsl.Behaviors
-import akka.actor.typed.scaladsl.MutableBehavior
+import akka.actor.typed.scaladsl.AbstractBehavior
 import akka.annotation.InternalApi
 import akka.persistence.JournalProtocol._
 import akka.persistence._
@@ -70,15 +70,13 @@ private[akka] object EventsourcedRunning {
   extends EventsourcedJournalInteractions[C, E, S] with EventsourcedStashManagement[C, E, S] {
   import EventsourcedRunning.EventsourcedState
 
-  private def commandContext = setup.commandContext
-
   private val runningCmdsMdc = MDC.create(setup.persistenceId, MDC.RunningCmds)
   private val persistingEventsMdc = MDC.create(setup.persistenceId, MDC.PersistingEvents)
 
   def handlingCommands(state: EventsourcedState[S]): Behavior[InternalProtocol] = {
 
     def onCommand(state: EventsourcedState[S], cmd: C): Behavior[InternalProtocol] = {
-      val effect = setup.commandHandler(commandContext, state.state, cmd)
+      val effect = setup.commandHandler(state.state, cmd)
       applyEffects(cmd, state, effect.asInstanceOf[EffectImpl[E, S]]) // TODO can we avoid the cast?
     }
 
@@ -181,7 +179,7 @@ private[akka] object EventsourcedRunning {
     numberOfEvents:             Int,
     shouldSnapshotAfterPersist: Boolean,
     var sideEffects:            immutable.Seq[SideEffect[S]])
-    extends MutableBehavior[EventsourcedBehavior.InternalProtocol] {
+    extends AbstractBehavior[EventsourcedBehavior.InternalProtocol] {
 
     private var eventCounter = 0
 
@@ -255,10 +253,10 @@ private[akka] object EventsourcedRunning {
     outer:    Behavior[InternalProtocol]): Behavior[InternalProtocol] = {
     response match {
       case SaveSnapshotSuccess(meta) ⇒
-        setup.onSnapshot(commandContext, meta, Success(Done))
+        setup.onSnapshot(meta, Success(Done))
         outer
       case SaveSnapshotFailure(meta, ex) ⇒
-        setup.onSnapshot(commandContext, meta, Failure(ex))
+        setup.onSnapshot(meta, Failure(ex))
         outer
 
       // FIXME not implemented
@@ -294,8 +292,8 @@ private[akka] object EventsourcedRunning {
     case _: Stop.type @unchecked ⇒
       Behaviors.stopped
 
-    case Callback(sideEffects) ⇒
-      sideEffects(state.state)
+    case callback: Callback[_] ⇒
+      callback.sideEffect(state.state)
       Behaviors.same
 
     case _ ⇒

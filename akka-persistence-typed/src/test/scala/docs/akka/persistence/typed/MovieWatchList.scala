@@ -1,4 +1,4 @@
-/**
+/*
  * Copyright (C) 2018 Lightbend Inc. <https://www.lightbend.com>
  */
 
@@ -6,9 +6,10 @@ package docs.akka.persistence.typed
 
 import akka.actor.typed.ActorRef
 import akka.actor.typed.Behavior
+import akka.persistence.typed.PersistenceId
 import akka.persistence.typed.scaladsl.Effect
-import akka.persistence.typed.scaladsl.PersistentBehaviors
-import akka.persistence.typed.scaladsl.PersistentBehaviors.CommandHandler
+import akka.persistence.typed.scaladsl.PersistentBehavior
+import akka.persistence.typed.scaladsl.PersistentBehavior.CommandHandler
 
 object MovieWatchList {
   sealed trait Command
@@ -30,7 +31,7 @@ object MovieWatchList {
   }
 
   private val commandHandler: CommandHandler[Command, Event, MovieList] = {
-    (ctx, state, cmd) ⇒
+    (state, cmd) ⇒
       cmd match {
         case AddMovie(movieId) ⇒
           Effect.persist(MovieAdded(movieId))
@@ -43,8 +44,8 @@ object MovieWatchList {
   }
 
   def behavior(userId: String): Behavior[Command] = {
-    PersistentBehaviors.receive[Command, Event, MovieList](
-      persistenceId = "movies-" + userId,
+    PersistentBehavior[Command, Event, MovieList](
+      persistenceId = PersistenceId(s"movies-$userId"),
       emptyState = MovieList(Set.empty),
       commandHandler,
       eventHandler = (state, event) ⇒ state.applyEvent(event)

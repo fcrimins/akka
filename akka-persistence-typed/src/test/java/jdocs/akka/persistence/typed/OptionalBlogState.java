@@ -6,6 +6,7 @@ package jdocs.akka.persistence.typed;
 
 import akka.Done;
 import akka.actor.typed.ActorRef;
+import akka.persistence.typed.PersistenceId;
 import akka.persistence.typed.javadsl.CommandHandler;
 import akka.persistence.typed.javadsl.CommandHandlerBuilder;
 import akka.persistence.typed.javadsl.EventHandler;
@@ -128,7 +129,7 @@ public class OptionalBlogState {
             return Effect().persist(event)
                 .andThen(() -> cmd.replyTo.tell(new AddPostDone(cmd.content.postId)));
           })
-          .matchCommand(PassivatePost.class, (state, cmd) -> Effect().stop());
+          .matchCommand(PassivatePost.class, cmd -> Effect().stop());
     }
 
     private CommandHandlerBuilder<BlogCommand, BlogEvent, Optional<BlogState>, Optional<BlogState>> postCommandHandler() {
@@ -147,10 +148,10 @@ public class OptionalBlogState {
             return Effect().none();
           })
           .matchCommand(AddPost.class, (state, cmd) -> Effect().unhandled())
-          .matchCommand(PassivatePost.class, (state, cmd) -> Effect().stop());
+          .matchCommand(PassivatePost.class, cmd -> Effect().stop());
     }
 
-    public BlogBehavior(String persistenceId) {
+    public BlogBehavior(PersistenceId persistenceId) {
       super(persistenceId);
     }
 

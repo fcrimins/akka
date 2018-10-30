@@ -1,4 +1,4 @@
-/**
+/*
  * Copyright (C) 2009-2018 Lightbend Inc. <https://www.lightbend.com>
  */
 
@@ -15,7 +15,7 @@ public class IotSupervisor extends AbstractActor {
   private final LoggingAdapter log = Logging.getLogger(getContext().getSystem(), this);
 
   public static Props props() {
-    return Props.create(IotSupervisor.class);
+    return Props.create(IotSupervisor.class, IotSupervisor::new);
   }
 
   @Override

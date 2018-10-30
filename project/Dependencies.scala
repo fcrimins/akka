@@ -15,13 +15,13 @@ object Dependencies {
   lazy val scalaCheckVersion = settingKey[String]("The version of ScalaCheck to use.")
   lazy val java8CompatVersion = settingKey[String]("The version of scala-java8-compat to use.")
   val junitVersion = "4.12"
-  val sslConfigVersion = "0.2.4"
+  val sslConfigVersion = "0.3.6"
   val slf4jVersion = "1.7.25"
   val scalaXmlVersion = "1.0.6"
-  val aeronVersion = "1.9.3"
+  val aeronVersion = "1.11.2"
 
   val Versions = Seq(
-    crossScalaVersions := Seq("2.12.6", "2.11.12"),
+    crossScalaVersions := Seq("2.12.7", "2.11.12"),
     scalaVersion := System.getProperty("akka.build.scalaVersion", crossScalaVersions.value.head),
     scalaStmVersion := sys.props.get("akka.build.scalaStmVersion").getOrElse("0.8"),
     scalaCheckVersion := sys.props.get("akka.build.scalaCheckVersion").getOrElse(
@@ -101,6 +101,9 @@ object Dependencies {
       // in-memory filesystem for file related tests
       val jimfs = "com.google.jimfs" % "jimfs" % "1.1" % "test" // ApacheV2
 
+      // docker utils
+      val dockerClient = "com.spotify" % "docker-client" % "8.13.1" % "test" // ApacheV2
+
       // metrics, measurements, perf testing
       val metrics = "io.dropwizard.metrics" % "metrics-core" % "3.2.5" % "test" // ApacheV2
       val metricsJvm = "io.dropwizard.metrics" % "metrics-jvm" % "3.2.5" % "test" // ApacheV2
@@ -132,6 +135,9 @@ object Dependencies {
 
       val junit = Compile.junit % "optional;provided;test"
 
+
+      val scalatest = Def.setting { "org.scalatest" %% "scalatest" % scalaTestVersion.value % "optional;provided;test" } // ApacheV2
+
     }
 
   }
@@ -144,10 +150,13 @@ object Dependencies {
 
   val testkit = l ++= Seq(Test.junit, Test.scalatest.value) ++ Test.metricsAll
 
-  val actorTests = l ++= Seq(Test.junit, Test.scalatest.value, Test.commonsCodec, Test.commonsMath,
-    Test.mockito, Test.scalacheck.value, Test.jimfs)
+  val actorTests = l ++= Seq(
+    Test.junit, Test.scalatest.value, Test.commonsCodec, Test.commonsMath,
+    Test.mockito, Test.scalacheck.value, Test.jimfs,
+    Test.dockerClient
+  )
 
-  val actorTestkitTyped = l ++= Seq(Provided.junit)
+  val actorTestkitTyped = l ++= Seq(Provided.junit, Provided.scalatest.value)
 
   val remote = l ++= Seq(netty, aeronDriver, aeronClient, Test.junit, Test.scalatest.value, Test.jimfs)
 

@@ -1,4 +1,4 @@
-/**
+/*
  * Copyright (C) 2009-2018 Lightbend Inc. <https://www.lightbend.com>
  */
 
@@ -546,6 +546,8 @@ case class OneForOneStrategy(
    */
   def this(decider: SupervisorStrategy.Decider) =
     this()(decider)
+
+  def withMaxNrOfRetries(maxNrOfRetries: Int): OneForOneStrategy = copy(maxNrOfRetries = maxNrOfRetries)(decider)
 
   /*
    *  this is a performance optimization to avoid re-allocating the pairs upon

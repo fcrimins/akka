@@ -1,4 +1,4 @@
-/**
+/*
  * Copyright (C) 2009-2018 Lightbend Inc. <https://www.lightbend.com>
  */
 
@@ -7,7 +7,7 @@ package akka.actor.typed.internal
 import akka.actor.typed
 import akka.actor.typed.Behavior.{ SameBehavior, UnhandledBehavior }
 import akka.actor.typed.internal.TimerSchedulerImpl.TimerMsg
-import akka.actor.typed.{ ActorContext, ActorRef, Behavior, BehaviorInterceptor, ExtensibleBehavior, Signal }
+import akka.actor.typed.{ ActorContext, ActorRef, Behavior, BehaviorInterceptor, ExtensibleBehavior, PreRestart, Signal }
 import akka.annotation.InternalApi
 import akka.util.LineNumbers
 
@@ -47,6 +47,9 @@ private[akka] final class InterceptorImpl[O, I](val interceptor: BehaviorInterce
   private val receiveTarget: ReceiveTarget[I] = new ReceiveTarget[I] {
     override def apply(ctx: ActorContext[_], msg: I): Behavior[I] =
       Behavior.interpretMessage(nestedBehavior, ctx.asInstanceOf[ActorContext[I]], msg)
+
+    override def signalRestart(ctx: ActorContext[_]): Unit =
+      Behavior.interpretSignal(nestedBehavior, ctx.asInstanceOf[ActorContext[I]], PreRestart)
   }
 
   private val signalTarget = new SignalTarget[I] {
@@ -56,7 +59,7 @@ private[akka] final class InterceptorImpl[O, I](val interceptor: BehaviorInterce
 
   // invoked pre-start to start/de-duplicate the initial behavior stack
   def preStart(ctx: typed.ActorContext[O]): Behavior[O] = {
-    val started = interceptor.preStart(ctx.asInstanceOf[ActorContext[I]], preStartTarget)
+    val started = interceptor.aroundStart(ctx, preStartTarget)
     deduplicate(started, ctx)
   }
 
@@ -74,7 +77,6 @@ private[akka] final class InterceptorImpl[O, I](val interceptor: BehaviorInterce
   }
 
   private def deduplicate(interceptedResult: Behavior[I], ctx: ActorContext[O]): Behavior[O] = {
-    // FIXME does this same/stopped/unhandled really belong here? Also, it does not work
     val started = Behavior.start(interceptedResult, ctx.asInstanceOf[ActorContext[I]])
     if (started == UnhandledBehavior || started == SameBehavior || !Behavior.isAlive(started)) {
       started.asInstanceOf[Behavior[O]]
@@ -85,7 +87,7 @@ private[akka] final class InterceptorImpl[O, I](val interceptor: BehaviorInterce
         case _ ⇒ false
       }
 
-      if (duplicateInterceptExists) started.asInstanceOf[Behavior[O]] // FIXME is this really safe (we know there's a Behavior[O] in there though
+      if (duplicateInterceptExists) started.asInstanceOf[Behavior[O]]
       else new InterceptorImpl[O, I](interceptor, started)
     }
   }
@@ -138,9 +140,14 @@ private[akka] final case class WidenedInterceptor[O, I](matcher: PartialFunction
   import BehaviorInterceptor._
 
   override def isSame(other: BehaviorInterceptor[Any, Any]): Boolean = other match {
-    // can only be elimintated if it is the same partial function
+    // If they use the same pf instance we can allow it, to have one way to workaround defining
+    // "recursive" narrowed behaviors.
     case WidenedInterceptor(`matcher`) ⇒ true
-    case _                             ⇒ false
+    case WidenedInterceptor(otherMatcher) ⇒
+      // there is no safe way to allow this
+      throw new IllegalStateException("Widen can only be used one time in the same behavior stack. " +
+        s"One defined in ${LineNumbers(matcher)}, and another in ${LineNumbers(otherMatcher)}")
+    case _ ⇒ false
   }
 
   def aroundReceive(ctx: ActorContext[O], msg: O, target: ReceiveTarget[I]): Behavior[I] = {

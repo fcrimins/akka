@@ -1,4 +1,4 @@
-/**
+/*
  * Copyright (C) 2018 Lightbend Inc. <https://www.lightbend.com>
  */
 
@@ -8,27 +8,23 @@ import java.util.function.Predicate
 import java.util.{ Collections, Optional }
 
 import akka.actor.typed
-import akka.actor.typed.{ BackoffSupervisorStrategy, Behavior, SupervisorStrategy }
+import akka.actor.typed.{ BackoffSupervisorStrategy, Behavior }
 import akka.actor.typed.Behavior.DeferredBehavior
-import akka.actor.typed.javadsl.ActorContext
 import akka.annotation.{ ApiMayChange, InternalApi }
 import akka.persistence.SnapshotMetadata
 import akka.persistence.typed.{ EventAdapter, _ }
 import akka.persistence.typed.internal._
 import scala.util.{ Failure, Success }
 
-import akka.japi.pf.FI
-
-/** Java API */
 @ApiMayChange
-abstract class PersistentBehavior[Command, Event, State >: Null] private (val persistenceId: String, supervisorStrategy: Option[BackoffSupervisorStrategy]) extends DeferredBehavior[Command] {
+abstract class PersistentBehavior[Command, Event, State >: Null] private[akka] (val persistenceId: PersistenceId, supervisorStrategy: Optional[BackoffSupervisorStrategy]) extends DeferredBehavior[Command] {
 
-  def this(persistenceId: String) = {
-    this(persistenceId, None)
+  def this(persistenceId: PersistenceId) = {
+    this(persistenceId, Optional.empty[BackoffSupervisorStrategy])
   }
 
-  def this(persistenceId: String, backoffSupervisorStrategy: BackoffSupervisorStrategy) = {
-    this(persistenceId, Some(backoffSupervisorStrategy))
+  def this(persistenceId: PersistenceId, backoffSupervisorStrategy: BackoffSupervisorStrategy) = {
+    this(persistenceId, Optional.ofNullable(backoffSupervisorStrategy))
   }
 
   /**
@@ -150,20 +146,20 @@ abstract class PersistentBehavior[Command, Event, State >: Null] private (val pe
       else tags.asScala.toSet
     }
 
-    val behavior = scaladsl.PersistentBehaviors.receive[Command, Event, State](
+    val behavior = scaladsl.PersistentBehavior[Command, Event, State](
       persistenceId,
       emptyState,
-      (c, state, cmd) ⇒ commandHandler()(state, cmd).asInstanceOf[EffectImpl[Event, State]],
+      (state, cmd) ⇒ commandHandler()(state, cmd).asInstanceOf[EffectImpl[Event, State]],
       eventHandler()(_, _))
-      .onRecoveryCompleted((ctx, state) ⇒ onRecoveryCompleted(state))
+      .onRecoveryCompleted(onRecoveryCompleted)
       .snapshotWhen(snapshotWhen)
       .withTagger(tagger)
-      .onSnapshot((ctx, meta, result) ⇒ {
+      .onSnapshot((meta, result) ⇒ {
         result match {
           case Success(_) ⇒
-            ctx.log.debug("Save snapshot successful, snapshot metadata: [{}]", meta)
+            context.asScala.log.debug("Save snapshot successful, snapshot metadata: [{}]", meta)
           case Failure(e) ⇒
-            ctx.log.error(e, "Save snapshot failed, snapshot metadata: [{}]", meta)
+            context.asScala.log.error(e, "Save snapshot failed, snapshot metadata: [{}]", meta)
         }
 
         onSnapshot(meta, result match {
@@ -172,7 +168,7 @@ abstract class PersistentBehavior[Command, Event, State >: Null] private (val pe
         })
       }).eventAdapter(eventAdapter())
 
-    if (supervisorStrategy.isDefined)
+    if (supervisorStrategy.isPresent)
       behavior.onPersistFailure(supervisorStrategy.get)
     else
       behavior
@@ -180,3 +176,25 @@ abstract class PersistentBehavior[Command, Event, State >: Null] private (val pe
 
 }
 
+/**
+ * FIXME This is not completed for javadsl yet. The compiler is not enforcing the replies yet.
+ *
+ * A [[PersistentBehavior]] that is enforcing that replies to commands are not forgotten.
+ * There will be compilation errors if the returned effect isn't a [[ReplyEffect]], which can be
+ * created with `Effects().reply`, `Effects().noReply`, [[Effect.thenReply]], or [[Effect.thenNoReply]].
+ */
+@ApiMayChange
+abstract class PersistentBehaviorWithEnforcedReplies[Command, Event, State >: Null](persistenceId: PersistenceId, backoffSupervisorStrategy: Optional[BackoffSupervisorStrategy])
+  extends PersistentBehavior[Command, Event, State](persistenceId, backoffSupervisorStrategy) {
+
+  def this(persistenceId: PersistenceId) = {
+    this(persistenceId, Optional.empty[BackoffSupervisorStrategy])
+  }
+
+  def this(persistenceId: PersistenceId, backoffSupervisorStrategy: BackoffSupervisorStrategy) = {
+    this(persistenceId, Optional.ofNullable(backoffSupervisorStrategy))
+  }
+
+  // FIXME override commandHandler and commandHandlerBuilder to require the ReplyEffect return type,
+  // which is unfortunately intrusive to the CommandHandlerBuilder
+}

@@ -1,11 +1,13 @@
-/**
+/*
  * Copyright (C) 2018 Lightbend Inc. <https://www.lightbend.com>
  */
 
 package akka.actor.typed
 package scaladsl
 
-import akka.actor.testkit.typed.scaladsl.{ ActorTestKit, TestProbe }
+import akka.actor.testkit.typed.scaladsl.ScalaTestWithActorTestKit
+import akka.actor.testkit.typed.scaladsl.TestProbe
+import org.scalatest.WordSpecLike
 
 object StashSpec {
   sealed trait Command
@@ -118,7 +120,7 @@ object StashSpec {
       active(Vector.empty)
     }
 
-  class MutableStash(ctx: ActorContext[Command]) extends MutableBehavior[Command] {
+  class MutableStash(ctx: ActorContext[Command]) extends AbstractBehavior[Command] {
 
     private val buffer = StashBuffer.apply[Command](capacity = 10)
     private var stashing = false
@@ -186,7 +188,7 @@ class MutableStashSpec extends StashSpec {
   def behaviorUnderTest: Behavior[Command] = Behaviors.setup(ctx ⇒ new MutableStash(ctx))
 }
 
-abstract class StashSpec extends ActorTestKit with TypedAkkaSpecWithShutdown {
+abstract class StashSpec extends ScalaTestWithActorTestKit with WordSpecLike {
   import StashSpec._
 
   def testQualifier: String

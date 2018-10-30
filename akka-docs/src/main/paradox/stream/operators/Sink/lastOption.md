@@ -8,7 +8,7 @@ Materialize a @scala[`Future[Option[T]]`] @java[`CompletionStage<Optional<T>>`] 
 
 ## Signature
 
-@@signature [Sink.scala]($akka$/akka-stream/src/main/scala/akka/stream/scaladsl/Sink.scala) { #lastOption }
+@@signature [Sink.scala](/akka-stream/src/main/scala/akka/stream/scaladsl/Sink.scala) { #lastOption }
 
 @@@
 
@@ -27,3 +27,10 @@ completed with @scala[`None`] @java[an empty `Optional`].
 
 @@@
 
+## Example
+
+Scala
+:   @@snip [LastSinkSpec.scala](/akka-stream-tests/src/test/scala/akka/stream/scaladsl/LastSinkSpec.scala) { #lastOption-operator-example }
+
+Java
+:   @@snip [SinkDocExamples.java](/akka-docs/src/test/java/jdocs/stream/operators/SinkDocExamples.java) { #lastOption-operator-example }

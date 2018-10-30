@@ -1,4 +1,4 @@
-/**
+/*
  * Copyright (C) 2009-2018 Lightbend Inc. <https://www.lightbend.com>
  */
 
@@ -7,7 +7,7 @@ package akka.actor.typed
 import java.util.concurrent.{ CountDownLatch, TimeUnit }
 
 import akka.Done
-import akka.actor.typed.scaladsl.{ Behaviors, MutableBehavior }
+import akka.actor.typed.scaladsl.{ Behaviors, AbstractBehavior }
 import akka.actor.typed.scaladsl.{ ActorContext ⇒ SActorContext }
 
 import scala.concurrent.duration._

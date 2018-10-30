@@ -47,13 +47,16 @@ akka {
   val configSystem2 = ConfigFactory.parseString(
     s"""
         akka.remote.netty.tcp.port = 0
+        akka.remote.artery.canonical.port = 0
      """
   ).withFallback(configSystem1)
 }
 
-class BasicClusterConfigSpec extends TypedAkkaSpec {
-
+class BasicClusterConfigSpec extends WordSpec with ScalaFutures with Eventually with Matchers {
   import BasicClusterExampleSpec._
+
+  implicit override val patienceConfig =
+    PatienceConfig(timeout = scaled(Span(10, Seconds)), interval = scaled(Span(100, Millis)))
 
   "Cluster API" must {
     "init cluster" in {
@@ -95,7 +98,10 @@ akka {
 #config
      """)
 
-  val noPort = ConfigFactory.parseString("akka.remote.netty.tcp.port = 0")
+  val noPort = ConfigFactory.parseString("""
+      akka.remote.netty.tcp.port = 0
+      akka.remote.artery.canonical.port = 0
+    """)
 
 }
 

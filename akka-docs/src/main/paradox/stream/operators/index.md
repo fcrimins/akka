@@ -49,6 +49,7 @@ These built-in sinks are available from @scala[`akka.stream.scaladsl.Sink`] @jav
 |Sink|<a name="combine"></a>@ref[combine](Sink/combine.md)|Combine several sinks into one using a user specified strategy|
 |Sink|<a name="fold"></a>@ref[fold](Sink/fold.md)|Fold over emitted element with a function, where each invocation will get the new element and the result from the previous fold invocation.|
 |Sink|<a name="foreach"></a>@ref[foreach](Sink/foreach.md)|Invoke a given procedure for each element received.|
+|Sink|<a name="foreachasync"></a>@ref[foreachAsync](Sink/foreachAsync.md)|Invoke a given procedure asynchronously for each element received.|
 |Sink|<a name="foreachparallel"></a>@ref[foreachParallel](Sink/foreachParallel.md)|Like `foreach` but allows up to `parallellism` procedure calls to happen in parallel.|
 |Sink|<a name="fromsubscriber"></a>@ref[fromSubscriber](Sink/fromSubscriber.md)|Integration with Reactive Streams, wraps a `org.reactivestreams.Subscriber` as a sink.|
 |Sink|<a name="head"></a>@ref[head](Sink/head.md)|Materializes into a @scala[`Future`] @java[`CompletionStage`] which completes with the first value arriving, after this the stream is canceled.|
@@ -73,7 +74,7 @@ dispatcher configured through the `akka.stream.blocking-io-dispatcher`.
 @@@ warning
 
 Be aware that `asInputStream` and `asOutputStream` materialize `InputStream` and `OutputStream` respectively as
-blocking API implementation. They will block tread until data will be available from upstream.
+blocking API implementation. They will block the thread until data will be available from upstream.
 Because of blocking nature these objects cannot be used in `mapMaterializeValue` section as it causes deadlock
 of the stream materialization process.
 For example, following snippet will fall with timeout exception:
@@ -87,6 +88,7 @@ For example, following snippet will fall with timeout exception:
 ```
 
 @@@
+
 
 | |Operator|Description|
 |--|--|--|
@@ -105,7 +107,9 @@ Sources and sinks for reading and writing files can be found on `FileIO`.
 
 | |Operator|Description|
 |--|--|--|
-|FileIO|<a name="frompath"></a>@ref[fromPath](FileIO/fromPath.md)|Emit the contents of a file.|
+|FileIO|<a name="fromfile"></a>@ref[fromFile](FileIO/fromFile.md)|Emits the contents of a file.|
+|FileIO|<a name="frompath"></a>@ref[fromPath](FileIO/fromPath.md)|Emits the contents of a file from the given path.|
+|FileIO|<a name="tofile"></a>@ref[toFile](FileIO/toFile.md)|Create a sink which will write incoming `ByteString` s to a given file.|
 |FileIO|<a name="topath"></a>@ref[toPath](FileIO/toPath.md)|Create a sink which will write incoming `ByteString` s to a given file path.|
 
 ## Simple operators
@@ -242,6 +246,8 @@ the inputs in different ways.
 |Source/Flow|<a name="orelse"></a>@ref[orElse](Source-or-Flow/orElse.md)|If the primary source completes without emitting any elements, the elements from the secondary source are emitted.|
 |Source/Flow|<a name="prepend"></a>@ref[prepend](Source-or-Flow/prepend.md)|Prepends the given source to the flow, consuming it until completion before the original source is consumed.|
 |Source/Flow|<a name="zip"></a>@ref[zip](Source-or-Flow/zip.md)|Combines elements from each of multiple sources into @scala[tuples] @java[*Pair*] and passes the @scala[tuples] @java[pairs] downstream.|
+|Source/Flow|<a name="ziplatest"></a>@ref[zipLatest](Source-or-Flow/zipLatest.md)|Combines elements from each of multiple sources into @scala[tuples] @java[*Pair*] and passes the @scala[tuples] @java[pairs] downstream, picking always the latest element of each.|
+|Source/Flow|<a name="ziplatestwith"></a>@ref[zipLatestWith](Source-or-Flow/zipLatestWith.md)|Combines elements from multiple sources through a `combine` function and passes the returned value downstream, picking always the latest element of each.|
 |Source/Flow|<a name="zipwith"></a>@ref[zipWith](Source-or-Flow/zipWith.md)|Combines elements from multiple sources through a `combine` function and passes the returned value downstream.|
 |Source/Flow|<a name="zipwithindex"></a>@ref[zipWithIndex](Source-or-Flow/zipWithIndex.md)|Zips elements of current flow with its indices.|
 
@@ -263,6 +269,18 @@ Operators meant for inter-operating between Akka Streams and Actors:
 |--|--|--|
 |ActorSink|<a name="actorref"></a>@ref[actorRef](ActorSink/actorRef.md)|Sends the elements of the stream to the given @java[`ActorRef<T>`]@scala[`ActorRef[T]`].|
 |ActorFlow|<a name="ask"></a>@ref[ask](ActorFlow/ask.md)|Use the `AskPattern` to send each element as an `ask` to the target actor, and expect a reply back that will be sent further downstream.|
+
+## Error handling
+
+For more background see the @ref[Error Handling in Streams](../stream-error.md) section.
+
+| |Operator|Description|
+|--|--|--|
+|RestartSource|<a name="onfailureswithbackoff"></a>@ref[onFailuresWithBackoff](RestartSource/onFailuresWithBackoff.md)|Wrap the given @unidoc[Source] with a @unidoc[Source] that will restart it when it fails using an exponential backoff.|
+|RestartFlow|<a name="onfailureswithbackoff"></a>@ref[onFailuresWithBackoff](RestartFlow/onFailuresWithBackoff.md)|Wrap the given @unidoc[Flow] with a @unidoc[Flow] that will restart it when it fails using an exponential backoff. Notice that this @unidoc[Flow] will not restart on completion of the wrapped flow.|
+|RestartSource|<a name="withbackoff"></a>@ref[withBackoff](RestartSource/withBackoff.md)|Wrap the given @unidoc[Source] with a @unidoc[Source] that will restart it when it fails or complete using an exponential backoff.|
+|RestartFlow|<a name="withbackoff"></a>@ref[withBackoff](RestartFlow/withBackoff.md)|Wrap the given @unidoc[Flow] with a @unidoc[Flow] that will restart it when it fails or complete using an exponential backoff.|
+|RestartSink|<a name="withbackoff"></a>@ref[withBackoff](RestartSink/withBackoff.md)|Wrap the given @unidoc[Sink] with a @unidoc[Sink] that will restart it when it fails or complete using an exponential backoff.|
 
 @@@ index
 
@@ -303,7 +321,9 @@ Operators meant for inter-operating between Akka Streams and Actors:
 * [merge](Source-or-Flow/merge.md)
 * [mergeSorted](Source-or-Flow/mergeSorted.md)
 * [zip](Source-or-Flow/zip.md)
+* [zipLatest](Source-or-Flow/zipLatest.md)
 * [zipWith](Source-or-Flow/zipWith.md)
+* [zipLatestWith](Source-or-Flow/zipLatestWith.md)
 * [zipWithIndex](Source-or-Flow/zipWithIndex.md)
 * [map](Source-or-Flow/map.md)
 * [recover](Source-or-Flow/recover.md)
@@ -378,6 +398,7 @@ Operators meant for inter-operating between Akka Streams and Actors:
 * [asPublisher](Sink/asPublisher.md)
 * [ignore](Sink/ignore.md)
 * [foreach](Sink/foreach.md)
+* [foreachAsync](Sink/foreachAsync.md)
 * [combine](Sink/combine.md)
 * [foreachParallel](Sink/foreachParallel.md)
 * [fold](Sink/fold.md)
@@ -395,8 +416,15 @@ Operators meant for inter-operating between Akka Streams and Actors:
 * [javaCollectorParallelUnordered](StreamConverters/javaCollectorParallelUnordered.md)
 * [asJavaStream](StreamConverters/asJavaStream.md)
 * [fromJavaStream](StreamConverters/fromJavaStream.md)
+* [fromFile](FileIO/fromFile.md)
 * [fromPath](FileIO/fromPath.md)
+* [toFile](FileIO/toFile.md)
 * [toPath](FileIO/toPath.md)
+* [withBackoff](RestartSource/withBackoff.md)
+* [onFailuresWithBackoff](RestartSource/onFailuresWithBackoff.md)
+* [withBackoff](RestartFlow/withBackoff.md)
+* [onFailuresWithBackoff](RestartFlow/onFailuresWithBackoff.md)
+* [withBackoff](RestartSink/withBackoff.md)
 * [ask](ActorFlow/ask.md)
 * [actorRef](ActorSink/actorRef.md)
 
